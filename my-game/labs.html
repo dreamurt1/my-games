@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Labs</title>
+  <link href="fonts/pretendard.css" rel="stylesheet">
+  <style>
+    /* Labs: 게임 아이디어 시제품 모음. 장식 없이 아주 단순하게 */
+    :root {
+      --bg: #121a45;
+      --line: rgba(255, 233, 168, 0.16);
+      --text: #ffe9a8;
+      --soft: rgba(255, 233, 168, 0.62);
+      --accent: #ffd66b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      word-break: keep-all;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::selection { background: var(--accent); color: var(--bg); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
+    main { max-width: 680px; margin: 0 auto; padding: 56px 24px 80px; }
+
+    .back { color: var(--soft); text-decoration: none; font-size: 15px; }
+    .back:hover { color: var(--text); }
+
+    h1 { margin-top: 40px; font-size: 40px; font-weight: 700; letter-spacing: -0.02em; }
+    .lead { margin-top: 10px; font-size: 16px; line-height: 1.6; color: var(--soft); }
+
+    ol { margin-top: 40px; list-style: none; border-top: 1px solid var(--line); }
+    li { border-bottom: 1px solid var(--line); }
+
+    li a {
+      display: grid;
+      grid-template-columns: 2rem 1fr auto;
+      align-items: baseline;
+      gap: 6px 16px;
+      padding: 22px 12px;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    li a:hover .name { color: var(--accent); }
+    .num { font-size: 15px; color: var(--soft); font-variant-numeric: tabular-nums; }
+    .name { font-size: 20px; font-weight: 600; transition: color 0.2s; }
+    .go { font-size: 15px; color: var(--soft); }
+    .desc { grid-column: 2 / 4; font-size: 15px; line-height: 1.6; color: var(--soft); }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="index.html">← Ryan</a>
+    <h1>Labs</h1>
+    <p class="lead">게임 아이디어를 바로 해 볼 수 있는 시제품이에요.</p>
+
+    <ol>
+      <li>
+        <a href="labs/ember.html">
+          <span class="num">01</span><span class="name">불씨</span><span class="go">플레이 →</span>
+          <span class="desc">작은 불씨로 꺼진 등불을 하나씩 밝혀요. 마우스·손가락 하나.</span>
+        </a>
+      </li>
+      <li>
+        <a href="labs/lighthouse-cat.html">
+          <span class="num">02</span><span class="name">등대지기 고양이</span><span class="go">플레이 →</span>
+          <span class="desc">고양이를 한 칸씩 옮겨 길목의 등불을 켜요. 지나온 길은 다시 못 가요.</span>
+        </a>
+      </li>
+      <li>
+        <a href="labs/until-dawn.html">
+          <span class="num">03</span><span class="name">새벽까지</span><span class="go">플레이 →</span>
+          <span class="desc">해를 닮은 구슬을 굴려 별 조각을 모으며 밤을 건너요.</span>
+        </a>
+      </li>
+      <li>
+        <a href="labs/glow-garden.html">
+          <span class="num">04</span><span class="name">빛의 정원</span><span class="go">플레이 →</span>
+          <span class="desc">빛의 씨앗을 심어 밀려오는 어둠으로부터 정원을 지켜요. 방향키 + 스페이스.</span>
+        </a>
+      </li>
+    </ol>
+  </main>
+</body>
+</html>

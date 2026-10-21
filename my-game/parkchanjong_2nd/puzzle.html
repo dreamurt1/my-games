@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ryan-portfolio · puzzle</title>
+  <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" rel="stylesheet">
+  <!-- 임시 게임 폰트: Galmuri11 (한글 픽셀 폰트) -->
+  <link href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css" rel="stylesheet">
+  <link href="retro.css" rel="stylesheet">
+  <style>
+    .board { max-width: 640px; padding: clamp(18px, 3.4vw, 32px); }
+
+    /* 방(5×5)과 고양이 대기실이 함께 들어 있는 무대 */
+    .stage { position: relative; touch-action: none; }
+
+    .room {
+      position: absolute;
+      top: 0;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      background: var(--night);
+    }
+
+    .tray-label {
+      position: absolute;
+      left: 0;
+      right: 0;
+      font-size: 14px;
+      letter-spacing: 0.2em;
+      text-align: center;
+      color: var(--lilac);
+    }
+
+    .piece, .shadow { position: absolute; touch-action: none; }
+
+    .piece {
+      cursor: grab;
+      filter: drop-shadow(4px 4px 0 var(--night));
+    }
+
+    .piece svg, .shadow svg { display: block; width: 100%; height: 100%; overflow: visible; }
+    .piece:hover { filter: drop-shadow(4px 4px 0 var(--night)) brightness(1.1); }
+    .piece.is-drag { cursor: grabbing; z-index: 10; filter: drop-shadow(8px 8px 0 var(--night)); }
+    .piece.is-placed { filter: none; }
+    .stage.is-locked .piece { pointer-events: none; }
+
+    /* 놓을 수 있는 자리 미리보기 */
+    .shadow { opacity: 0.35; pointer-events: none; z-index: 1; }
+    .shadow[hidden] { display: none; }
+
+    .overlay { aspect-ratio: auto; bottom: 16px; z-index: 20; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="arcade.html" id="backLink"><span data-px="arrowL"></span>Back</a>
+      <div class="top-right">
+        <span class="hi">CLEAR <span id="best">0</span>/<span id="total">3</span></span>
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <h1 class="band">PUZZLE</h1>
+    <p class="how">여러 모양의 고양이들을 끌어다 5×5 방에 빈틈없이 채워요.<br>조각을 짧게 누르면 90° 돌아가요. 끌고 있는 동안 R 키로도 돌릴 수 있어요.</p>
+
+    <main class="board px-frame">
+      <div class="stage" id="stage" aria-label="고양이 조각 퍼즐">
+        <div class="room px-frame" id="room"></div>
+        <div class="shadow" id="shadow" hidden></div>
+        <p class="tray-label" id="trayLabel">고양이 대기실</p>
+      </div>
+      <div class="hud">
+        <span>Level <span class="num" id="level">1</span>/<span id="levelTotal">3</span></span>
+        <button class="btn-ghost" id="resetBtn" type="button">Reset</button>
+      </div>
+
+      <div class="overlay" id="overlay">
+        <h2 id="overlayTitle">Cat Puzzle</h2>
+        <p id="overlayText">모양이 제각각인 고양이들을 방 안에 꼭 맞게 정리해 주세요.</p>
+        <div class="actions">
+          <button class="btn" id="playBtn" type="button">Play</button>
+        </div>
+        <p class="press blink">PRESS ENTER</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="retro.js"></script>
+  <script>
+    Retro.icons();
+    Retro.mountMute(document.getElementById("soundBtn"));
+
+    // 뒤로 가기: arcade.html에서 왔다면 브라우저 기록으로 되돌아가요
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /arcade\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    // ── 레벨: 5×5 방을 빈틈없이 나눈 그림. 같은 글자 = 한 마리 고양이 ──
+    const LEVELS = [
+      ["AAABB",
+       "ACCBB",
+       "ACCDB",
+       "EEDDD",
+       "EEEED"],
+      ["AABBB",
+       "ACCCB",
+       "DDCEE",
+       "DFFFE",
+       "DDFGG"],
+      ["ABBBC",
+       "AABCC",
+       "DAEEC",
+       "DDEFF",
+       "GDEFF"],
+    ];
+    const N = 5;
+    const P = Retro.PAL, S = Retro.SPR;
+    // 고양이 털색: 몸통(m) + 그림자(s), 모두 10색 팔레트 안에서
+    const COATS = [
+      { m: P.o, s: P.l }, { m: P.p, s: P.v }, { m: P.h, s: P.o }, { m: P.v, s: P.i },
+      { m: P.c, s: P.p }, { m: P.r, s: P.l }, { m: P.l, s: P.k },
+    ];
+    const U = 16; // 칸 하나 = 16픽셀
+
+    const stage = document.getElementById("stage");
+    const room = document.getElementById("room");
+    const shadow = document.getElementById("shadow");
+    const trayLabel = document.getElementById("trayLabel");
+    const levelEl = document.getElementById("level");
+    const bestEl = document.getElementById("best");
+    const overlay = document.getElementById("overlay");
+    const overlayTitle = document.getElementById("overlayTitle");
+    const overlayText = document.getElementById("overlayText");
+    const playBtn = document.getElementById("playBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    document.getElementById("total").textContent = LEVELS.length;
+    document.getElementById("levelTotal").textContent = LEVELS.length;
+    // 바닥 타일: 체크무늬
+    for (let i = 0; i < N * N; i++) {
+      const tile = document.createElement("span");
+      tile.style.background = (Math.floor(i / N) + i) % 2 ? "var(--ink)" : "var(--deep)";
+      room.appendChild(tile);
+    }
+
+    let cleared = 0;
+    try { cleared = Math.min(LEVELS.length, Number(localStorage.getItem("puzzle-clear")) || 0); } catch (e) {}
+    bestEl.textContent = cleared;
+
+    let level = 0, pieces = [], cell = 60, roomX = 0, playing = false;
+
+    // 레벨 그림 → 조각 목록 (각 조각은 [행, 열] 칸들의 모음)
+    function buildPieces(map) {
+      const groups = {};
+      map.forEach((row, r) => [...row].forEach((ch, c) => (groups[ch] ||= []).push([r, c])));
+      return Object.values(groups).map((cells, i) => ({
+        cells: normalize(cells),
+        head: 0,                      // 얼굴이 그려지는 칸
+        tail: cells.length - 1,       // 꼬리가 달린 칸
+        coat: COATS[i % COATS.length],
+        at: null,                     // 방 안 위치 [행, 열] (없으면 대기실)
+        el: null,
+      }));
+    }
+
+    function normalize(cells) {
+      const r0 = Math.min(...cells.map((p) => p[0]));
+      const c0 = Math.min(...cells.map((p) => p[1]));
+      return cells.map(([r, c]) => [r - r0, c - c0]);
+    }
+
+    // 시계 방향 90° 회전 (칸 순서를 유지해서 얼굴·꼬리 위치도 따라 돌아요)
+    function rotate(p) {
+      p.cells = normalize(p.cells.map(([r, c]) => [c, -r]));
+    }
+
+    const size = (p) => [Math.max(...p.cells.map((q) => q[0])) + 1, Math.max(...p.cells.map((q) => q[1])) + 1];
+
+    function occupied(except) {
+      const grid = Array.from({ length: N }, () => Array(N).fill(false));
+      pieces.forEach((p) => {
+        if (p === except || !p.at) return;
+        p.cells.forEach(([r, c]) => (grid[p.at[0] + r][p.at[1] + c] = true));
+      });
+      return grid;
+    }
+
+    function fits(p, r0, c0) {
+      const grid = occupied(p);
+      return p.cells.every(([r, c]) => {
+        const rr = r0 + r, cc = c0 + c;
+        return rr >= 0 && rr < N && cc >= 0 && cc < N && !grid[rr][cc];
+      });
+    }
+
+    // 픽셀 고양이: 칸마다 16×16 픽셀, 바깥쪽 가장자리에만 외곽선과 명암
+    function pieceSVG(p) {
+      const [rows, cols] = size(p);
+      const has = new Set(p.cells.map(([r, c]) => r + "," + c));
+      const { m, s } = p.coat;
+      let out = "";
+      p.cells.forEach(([r, c]) => {
+        const x = c * U, y = r * U;
+        out += `<rect x="${x}" y="${y}" width="${U}" height="${U}" fill="${m}"/>`;
+        const up = !has.has(r - 1 + "," + c), down = !has.has(r + 1 + "," + c);
+        const left = !has.has(r + "," + (c - 1)), right = !has.has(r + "," + (c + 1));
+        if (up) out += `<rect x="${x}" y="${y + 1}" width="${U}" height="1" fill="${P.c}" fill-opacity=".45"/>`;
+        if (down) out += `<rect x="${x}" y="${y + U - 2}" width="${U}" height="1" fill="${s}"/>`;
+        if (right) out += `<rect x="${x + U - 2}" y="${y}" width="1" height="${U}" fill="${s}"/>`;
+        if (up) out += `<rect x="${x}" y="${y}" width="${U}" height="1" fill="${P.k}"/>`;
+        if (down) out += `<rect x="${x}" y="${y + U - 1}" width="${U}" height="1" fill="${P.k}"/>`;
+        if (left) out += `<rect x="${x}" y="${y}" width="1" height="${U}" fill="${P.k}"/>`;
+        if (right) out += `<rect x="${x + U - 1}" y="${y}" width="1" height="${U}" fill="${P.k}"/>`;
+      });
+      const [tr, tc] = p.cells[p.tail];
+      if (p.cells.length > 1) out += Retro.rects(S.tail, { l: s }, tc * U, tr * U);
+      const [hr, hc] = p.cells[p.head];
+      out += Retro.rects(S.catFace, { o: m, l: s }, hc * U, hr * U);
+      return `<svg viewBox="0 0 ${cols * U} ${rows * U}" shape-rendering="crispEdges" aria-hidden="true">${out}</svg>`;
+    }
+
+    function draw(p) {
+      const [rows, cols] = size(p);
+      p.el.style.width = cols * cell + "px";
+      p.el.style.height = rows * cell + "px";
+      p.el.innerHTML = pieceSVG(p);
+    }
+
+    // 배치: 방 안 조각은 칸에 맞추고, 나머지는 대기실에 줄지어 놓아요
+    function layout() {
+      const W = stage.clientWidth;
+      cell = Math.floor(Math.min(80, W / 5.4) / 4) * 4; // 4px 단위로 맞춰 픽셀이 또렷하게
+      const roomSize = cell * N;
+      roomX = Math.round((W - roomSize) / 2 / 4) * 4;
+      room.style.left = roomX + "px";
+      room.style.width = room.style.height = roomSize + "px";
+
+      const gap = Math.round(cell * 0.4);
+      let y = roomSize + gap + 30;
+      trayLabel.style.top = roomSize + gap * 0.5 + 4 + "px";
+
+      // 대기실: 한 줄씩 채우고 가운데 정렬
+      const waiting = pieces.filter((p) => !p.at && !p.el.classList.contains("is-drag"));
+      trayLabel.hidden = waiting.length === 0;
+      let row = [], rowW = 0, rowH = 0;
+      const flush = () => {
+        let x = Math.round((W - (rowW - gap)) / 2);
+        row.forEach((p) => {
+          const [, cols] = size(p);
+          p.el.style.left = x + "px";
+          p.el.style.top = y + "px";
+          x += cols * cell + gap;
+        });
+        if (row.length) y += rowH + gap;
+        row = []; rowW = 0; rowH = 0;
+      };
+      waiting.forEach((p) => {
+        const [rows, cols] = size(p);
+        if (rowW + cols * cell > W && row.length) flush();
+        row.push(p);
+        rowW += cols * cell + gap;
+        rowH = Math.max(rowH, rows * cell);
+      });
+      flush();
+
+      pieces.forEach((p) => {
+        draw(p);
+        p.el.classList.toggle("is-placed", !!p.at);
+        if (p.at) {
+          p.el.style.left = roomX + p.at[1] * cell + "px";
+          p.el.style.top = p.at[0] * cell + "px";
+        }
+      });
+      stage.style.height = Math.max(y, roomSize + 40) + "px";
+    }
+
+    // ── 끌어다 놓기 ──
+    let drag = null;
+
+    // 조각 왼쪽 위 모서리에서 가장 가까운 칸
+    function target(p) {
+      return [Math.round(parseFloat(p.el.style.top) / cell), Math.round((parseFloat(p.el.style.left) - roomX) / cell)];
+    }
+
+    function overRoom(p) {
+      const [r, c] = target(p);
+      const [rows, cols] = size(p);
+      return r > -rows && r < N && c > -cols && c < N;
+    }
+
+    function showShadow(p) {
+      const [r, c] = target(p);
+      if (!fits(p, r, c)) { shadow.hidden = true; return; }
+      const [rows, cols] = size(p);
+      shadow.hidden = false;
+      shadow.style.left = roomX + c * cell + "px";
+      shadow.style.top = r * cell + "px";
+      shadow.style.width = cols * cell + "px";
+      shadow.style.height = rows * cell + "px";
+      shadow.innerHTML = pieceSVG(p);
+    }
+
+    function onDown(e, p) {
+      if (!playing) return;
+      e.preventDefault();
+      const box = p.el.getBoundingClientRect();
+      drag = { p, id: e.pointerId, sx: e.clientX, sy: e.clientY, dx: e.clientX - box.left, dy: e.clientY - box.top, moved: false };
+      p.el.setPointerCapture(e.pointerId);
+    }
+
+    function onMove(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      const { p } = drag;
+      if (!drag.moved) {
+        if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 6) return;
+        drag.moved = true;
+        p.at = null;
+        p.el.classList.add("is-drag");
+        p.el.classList.remove("is-placed");
+      }
+      const s = stage.getBoundingClientRect();
+      p.el.style.left = e.clientX - s.left - drag.dx + "px";
+      p.el.style.top = e.clientY - s.top - drag.dy + "px";
+      showShadow(p);
+    }
+
+    function onUp(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      const { p, moved } = drag;
+      drag = null;
+      shadow.hidden = true;
+      if (!moved) return spin(p);
+      p.el.classList.remove("is-drag");
+      const [r, c] = target(p);
+      if (fits(p, r, c)) { p.at = [r, c]; Retro.sfx("place"); }
+      else { p.at = null; if (overRoom(p)) Retro.sfx("error"); }
+      layout();
+      checkWin();
+    }
+
+    // 짧게 누르면 회전. 방 안에서 돌린 뒤 안 맞으면 대기실로
+    function spin(p) {
+      rotate(p);
+      Retro.sfx("rotate");
+      if (p.at && !fits(p, p.at[0], p.at[1])) p.at = null;
+      layout();
+      checkWin();
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if ((e.key === "r" || e.key === "R") && drag && drag.moved) {
+        const { p } = drag;
+        rotate(p);
+        draw(p);
+        Retro.sfx("rotate");
+        // 회전 후에도 커서가 조각 위에 있도록 잡은 위치를 조정
+        drag.dx = Math.min(drag.dx, p.el.offsetWidth - 4);
+        drag.dy = Math.min(drag.dy, p.el.offsetHeight - 4);
+        showShadow(p);
+      }
+      if (e.key === "Enter" && !playing && !overlay.hidden && document.activeElement !== playBtn) playBtn.click();
+    });
+
+    // ── 레벨 진행 ──
+    function loadLevel(i) {
+      level = i;
+      levelEl.textContent = i + 1;
+      pieces.forEach((p) => p.el.remove());
+      pieces = buildPieces(LEVELS[i]);
+      pieces.forEach((p) => {
+        // 처음엔 무작위로 돌려 놓아서 조금 더 어렵게
+        for (let k = Math.floor(Math.random() * 4); k > 0; k--) rotate(p);
+        p.el = document.createElement("div");
+        p.el.className = "piece";
+        p.el.addEventListener("pointerdown", (e) => onDown(e, p));
+        p.el.addEventListener("pointermove", onMove);
+        p.el.addEventListener("pointerup", onUp);
+        p.el.addEventListener("pointercancel", onUp);
+        stage.appendChild(p.el);
+      });
+      layout();
+    }
+
+    function checkWin() {
+      if (!occupied(null).every((row) => row.every(Boolean))) return;
+      playing = false;
+      stage.classList.add("is-locked");
+      Retro.sfx("clear");
+      if (level + 1 > cleared) {
+        cleared = level + 1;
+        bestEl.textContent = cleared;
+        try { localStorage.setItem("puzzle-clear", String(cleared)); } catch (e) {}
+      }
+      const last = level === LEVELS.length - 1;
+      setTimeout(() => {
+        overlayTitle.textContent = last ? "All Clear!" : "Solved!";
+        overlayText.textContent = last ? "모든 방의 고양이를 정리했어요. 수고했어요!" : `Level ${level + 1} 완성! 다음 방으로 가 볼까요?`;
+        playBtn.textContent = last ? "Again" : "Next";
+        playBtn.dataset.next = last ? 0 : level + 1;
+        overlay.hidden = false;
+        playBtn.focus();
+      }, 700);
+    }
+
+    function start(i) {
+      loadLevel(i);
+      playing = true;
+      stage.classList.remove("is-locked");
+      overlay.hidden = true;
+      Retro.sfx("start");
+    }
+
+    playBtn.addEventListener("click", () => start(Number(playBtn.dataset.next || 0)));
+    resetBtn.addEventListener("click", () => {
+      if (!playing) return;
+      pieces.forEach((p) => (p.at = null));
+      Retro.sfx("select");
+      layout();
+    });
+    window.addEventListener("resize", () => { if (pieces.length) layout(); });
+
+    // 시작 전에도 첫 레벨 조각을 보여줘요
+    loadLevel(0);
+    stage.classList.add("is-locked");
+  </script>
+</body>
+</html>

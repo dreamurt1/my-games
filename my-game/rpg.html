@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ryan-portfolio · 냥이 삼총사 (임시)</title>
+  <!-- 임시 게임 폰트: Galmuri11 (한글 픽셀 폰트, 내 폴더에 있는 파일) -->
+  <link href="fonts/galmuri11.css" rel="stylesheet">
+  <link href="retro.css" rel="stylesheet">
+  <style>
+    .board { max-width: 900px; }
+
+    .proto {
+      margin-bottom: 20px;
+      padding: 8px 14px;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      text-align: center;
+      color: var(--night);
+      background: var(--orange-hi);
+      box-shadow: 0 0 0 var(--px) var(--night);
+    }
+
+    /* 전투 판: 밝은 크림 바탕 (가위바위보와 같은 느낌) */
+    .arena {
+      position: relative;
+      overflow: hidden;
+      padding: clamp(18px, 3vw, 28px);
+      background-color: var(--cream);
+      background-image: conic-gradient(rgba(185, 166, 255, 0.22) 25%, transparent 0 50%, rgba(185, 166, 255, 0.22) 0 75%, transparent 0);
+      background-size: 32px 32px;
+      color: var(--night);
+      box-shadow: 0 0 0 var(--px) var(--night);
+    }
+
+    .side-title { margin-bottom: 10px; font-size: 14px; font-weight: 700; letter-spacing: 0.2em; color: var(--ink); text-align: center; }
+
+    .party { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(10px, 2.4vw, 20px); }
+
+    /* 캐릭터 카드 */
+    .unit {
+      --frame: var(--night);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 12px 8px 10px;
+      border: 0;
+      background: var(--deep);
+      color: var(--cream);
+      font: inherit;
+      cursor: pointer;
+      box-shadow:
+        0 calc(var(--px) * -1) 0 0 var(--frame), 0 var(--px) 0 0 var(--frame),
+        calc(var(--px) * -1) 0 0 0 var(--frame), var(--px) 0 0 0 var(--frame);
+    }
+
+    .unit:hover { filter: brightness(1.15); }
+    .unit.is-on { --frame: var(--orange); background: var(--ink); }
+    .unit.is-down { cursor: default; filter: grayscale(1) brightness(0.55); }
+    .unit .art { width: clamp(56px, 11vw, 84px); height: auto; }
+    .unit .name { font-size: clamp(14px, 2.2vw, 17px); font-weight: 700; letter-spacing: 0.04em; }
+    .unit .role { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--soft); }
+    .unit .role svg { width: 18px; height: auto; }
+    .hearts { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; font-size: 14px; }
+    .hearts .on { color: var(--red); }
+    .hearts .off { color: var(--night); }
+
+    /* 크림의 특기: 악당의 다음 손 미리 보기 */
+    .peek {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      background: var(--cream);
+      box-shadow: 0 0 0 var(--px) var(--night);
+    }
+
+    .peek svg { width: 28px; height: auto; }
+    .peek[hidden] { display: none; }
+
+    /* 가운데: 손 버튼 + 전투 기록 */
+    .middle { margin: clamp(18px, 3vw, 26px) 0; display: grid; gap: 14px; justify-items: center; }
+
+    .hands { display: flex; gap: clamp(10px, 3vw, 22px); }
+
+    .hand {
+      --frame: var(--night);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 14px 8px;
+      border: 0;
+      background: var(--orange);
+      color: var(--night);
+      font: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow:
+        0 calc(var(--px) * -1) 0 0 var(--frame), 0 var(--px) 0 0 var(--frame),
+        calc(var(--px) * -1) 0 0 0 var(--frame), var(--px) 0 0 0 var(--frame),
+        inset 0 calc(var(--px) * -1) 0 0 var(--orange-lo), 0 calc(var(--px) * 2) 0 0 var(--night);
+    }
+
+    .hand--rock { background: var(--lilac); box-shadow: 0 calc(var(--px) * -1) 0 0 var(--frame), 0 var(--px) 0 0 var(--frame), calc(var(--px) * -1) 0 0 0 var(--frame), var(--px) 0 0 0 var(--frame), inset 0 calc(var(--px) * -1) 0 0 var(--violet), 0 calc(var(--px) * 2) 0 0 var(--night); }
+    .hand--paper { background: var(--red); box-shadow: 0 calc(var(--px) * -1) 0 0 var(--frame), 0 var(--px) 0 0 var(--frame), calc(var(--px) * -1) 0 0 0 var(--frame), var(--px) 0 0 0 var(--frame), inset 0 calc(var(--px) * -1) 0 0 #c94a4a, 0 calc(var(--px) * 2) 0 0 var(--night); }
+    .hand svg { width: clamp(40px, 8vw, 56px); height: auto; }
+    .hand:active { transform: translateY(var(--px)); }
+    .hand:disabled { cursor: default; filter: grayscale(0.6); }
+
+    .log {
+      min-height: 3.2em;
+      max-width: 560px;
+      padding: 10px 14px;
+      font-size: 15px;
+      line-height: 1.6;
+      text-align: center;
+      background: rgba(255, 241, 224, 0.9);
+      border: var(--px) dashed var(--violet);
+    }
+
+    .log b { color: var(--orange-lo); }
+
+    /* 효과: 맞으면 흔들, 이기면 폭죽 */
+    .unit.hit { animation: shake 0.4s steps(8, end); }
+    @keyframes shake { 0%, 100% { transform: translate(0); } 25% { transform: translate(-6px, 0); } 50% { transform: translate(6px, -2px); } 75% { transform: translate(-4px, 2px); } }
+
+    .spark { position: absolute; z-index: 4; width: 8px; height: 8px; pointer-events: none; animation: burst 0.8s steps(8, end) forwards; }
+    @keyframes burst { 0% { transform: translate(0, 0); opacity: 1; } 60% { transform: translate(var(--dx), var(--dy)); opacity: 1; } 100% { transform: translate(var(--dx), calc(var(--dy) + 50px)); opacity: 0; } }
+
+    .float {
+      position: absolute;
+      z-index: 5;
+      font-size: 24px;
+      font-weight: 700;
+      pointer-events: none;
+      text-shadow: 3px 3px 0 var(--night);
+      animation: rise 0.9s steps(9, end) forwards;
+    }
+
+    .float.dmg { color: var(--red); }
+    .float.heal { color: #8be08b; }
+    @keyframes rise { to { transform: translateY(-40px); opacity: 0; } }
+
+    /* 끝 화면 */
+    .final {
+      position: absolute;
+      inset: 0;
+      z-index: 7;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 24px;
+      text-align: center;
+      background: rgba(13, 5, 32, 0.9);
+      color: var(--cream);
+    }
+
+    .final[hidden] { display: none; }
+    .final .art { width: clamp(96px, 18vw, 136px); height: auto; }
+    .final h2 { font-size: clamp(36px, 8vw, 64px); color: var(--orange-hi); text-shadow: var(--px) var(--px) 0 var(--night), calc(var(--px) * 2) calc(var(--px) * 2) 0 var(--orange-lo); }
+    .final p { color: var(--soft); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .unit.hit, .float { animation: none; }
+      .spark { display: none; }
+    }
+
+    @media (max-width: 560px) {
+      .unit .role span { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="arcade.html" id="backLink"><span data-px="arrowL"></span>Back</a>
+      <div class="top-right">
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <p class="proto">PROTOTYPE · 확인용 임시 페이지예요</p>
+
+    <h1 class="band">냥이 삼총사</h1>
+    <p class="how">내 고양이 → 공격할 악당 → 가위·바위·보 순서로 골라요.<br>특기 손으로 이기면 보너스! 악당마다 자주 내는 손이 있어요.</p>
+
+    <main class="board px-frame">
+      <div class="arena" id="arena">
+        <p class="side-title">소음 군단</p>
+        <div class="party" id="foes"></div>
+
+        <div class="middle">
+          <div class="hands" id="hands"></div>
+          <p class="log" id="log" aria-live="polite">고양이와 악당을 고른 뒤 손을 내요.</p>
+        </div>
+
+        <p class="side-title">냥이 삼총사</p>
+        <div class="party" id="heroes"></div>
+
+        <div class="final" id="final" role="dialog" aria-labelledby="finalTitle" hidden>
+          <span id="finalArt"></span>
+          <h2 id="finalTitle"></h2>
+          <p id="finalText"></p>
+          <button class="btn" id="againBtn" type="button">다시 하기</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="retro.js"></script>
+  <!-- CC0 고양이 녹음 (출처: CREDITS.md) -->
+  <script src="sounds/cat-sounds.js"></script>
+  <script>
+    Retro.icons();
+    Retro.mountMute(document.getElementById("soundBtn"));
+    Retro.addSample("mew", CAT_AUDIO.mew);
+
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /arcade\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    const P = Retro.PAL, S = Retro.SPR;
+
+    // ── 악당 픽셀 그림 ──
+    const SPEAKER = [
+      "................",
+      "..kkkkkkkkkkkk..",
+      "..kvvvvvvvvvvk..",
+      "..kvrrvvvvrrvk..",
+      "..kvkrvvvvrkvk..",
+      "..kvvvvvvvvvvk..",
+      "..kvvvppppvvvk..",
+      "..kvvpkkkkpvvk..",
+      "..kvvpkookpvvk..",
+      "..kvvpkookpvvk..",
+      "..kvvpkkkkpvvk..",
+      "..kvvvppppvvvk..",
+      "..kvvvvvvvvvvk..",
+      "..kkkkkkkkkkkk..",
+      "...kk......kk...",
+      "................",
+    ];
+    const RECORD = [
+      "................",
+      ".....kkkkkk.....",
+      "...kkddddddkk...",
+      "..kddpdddddddk..",
+      ".kdpddddddddddk.",
+      ".kddcrddddcrddk.",
+      "kdddddrrrrdddddk",
+      "kddddrrccrrddddk",
+      "kddddrrccrrddddk",
+      "kdddddrrrrdddddk",
+      ".kddddddddddddk.",
+      ".kdddkkkkkkdddk.",
+      "..kddddddddddk..",
+      "...kkddddddkk...",
+      ".....kkkkkk.....",
+      "................",
+    ];
+    const CROWN = ["kk...kk...kk", "khk.khhk.khk", "khhkhhhhkhhk", "khhhhrrhhhhk", "kkkkkkkkkkkk"];
+    const KING = CROWN.map((r) => ".." + r + "..").concat(SPEAKER.slice(1));
+
+    // ── 손 ──
+    const HANDS = {
+      scissors: { name: "가위", sprite: S.handScissors, beats: "paper" },
+      rock: { name: "바위", sprite: S.handRock, beats: "scissors" },
+      paper: { name: "보", sprite: S.handPaper, beats: "rock" },
+    };
+    const KEYS = Object.keys(HANDS);
+
+    // ── 등장인물 ──
+    function newGame() {
+      return {
+        heroes: [
+          { name: "치즈", role: "전사", hand: "rock", hp: 5, max: 5, art: () => Retro.svg(S.catFace, { o: P.o, l: P.l }, "art"), tip: "바위로 이기면 피해 2배" },
+          { name: "라일락", role: "마법사", hand: "paper", hp: 4, max: 4, art: () => Retro.svg(S.catFace, { o: P.p, l: P.v }, "art"), tip: "보로 이기면 아군 회복" },
+          { name: "크림", role: "도적", hand: "scissors", hp: 4, max: 4, art: () => Retro.svg(S.catFace, { o: P.c, l: P.p }, "art"), tip: "가위로 이기면 다음 손 엿보기" },
+        ],
+        foes: [
+          // habit: 자주 내는 손과 그 확률
+          { name: "삑삑이", role: "고장 난 스피커", hand: "rock", habit: ["rock", 0.6], hp: 4, max: 4, art: () => Retro.svg(SPEAKER, {}, "art") },
+          { name: "지지직", role: "튀는 레코드", hand: "scissors", habit: ["scissors", 0.6], hp: 4, max: 4, double: 0.25, art: () => Retro.svg(RECORD, { d: P.k, k: P.p }, "art") },
+          { name: "노이즈 킹", role: "보스", hand: null, habit: null, hp: 6, max: 6, boss: true, art: () => Retro.svg(KING, { v: P.r }, "art") },
+        ],
+      };
+    }
+
+    let G, hero = 0, foe = 0, busy = false, streak = 0;
+
+    // 악당의 다음 손 (습관대로, 보스는 체력이 절반 이하면 보를 자주)
+    function rollHand(f) {
+      let habit = f.habit;
+      if (f.boss && f.hp <= f.max / 2) habit = ["paper", 0.6];
+      if (habit && Math.random() < habit[1]) return habit[0];
+      return KEYS[Math.floor(Math.random() * 3)];
+    }
+
+    // ── 그리기 ──
+    const heroesEl = document.getElementById("heroes");
+    const foesEl = document.getElementById("foes");
+    const logEl = document.getElementById("log");
+    const handsEl = document.getElementById("hands");
+    const arena = document.getElementById("arena");
+
+    const hearts = (u) => `<span class="hearts">${Array.from({ length: u.max }, (_, i) => `<span class="${i < u.hp ? "on" : "off"}">${Retro.svg(S.heart)}</span>`).join("")}</span>`;
+
+    function card(u, i, isHero) {
+      const on = isHero ? i === hero : i === foe;
+      const down = u.hp <= 0;
+      const special = u.hand ? `<span class="role">${Retro.svg(HANDS[u.hand].sprite, {}, "")}<span>${u.role}</span></span>` : `<span class="role"><span>${u.role}</span></span>`;
+      const peek = !isHero && u.peeked && !down ? `<span class="peek" title="다음 손">${Retro.svg(HANDS[u.next].sprite, {}, "")}</span>` : "";
+      return `<button class="unit${on && !down ? " is-on" : ""}${down ? " is-down" : ""}" type="button" data-i="${i}" ${down ? "disabled" : ""}
+        aria-label="${u.name} 체력 ${u.hp}/${u.max}${isHero && u.tip ? ", 특기: " + u.tip : ""}">
+        ${peek}${u.art()}<span class="name">${u.name}</span>${special}${hearts(u)}
+      </button>`;
+    }
+
+    function render() {
+      heroesEl.innerHTML = G.heroes.map((u, i) => card(u, i, true)).join("");
+      foesEl.innerHTML = G.foes.map((u, i) => card(u, i, false)).join("");
+    }
+
+    handsEl.innerHTML = KEYS.map((k) => `<button class="hand hand--${k}" type="button" data-hand="${k}" aria-label="${HANDS[k].name} 내기">${Retro.svg(HANDS[k].sprite, {}, "")}${HANDS[k].name}</button>`).join("");
+
+    heroesEl.addEventListener("click", (e) => {
+      const b = e.target.closest(".unit");
+      if (!b || busy) return;
+      hero = Number(b.dataset.i);
+      const h = G.heroes[hero];
+      logEl.innerHTML = `<b>${h.name}</b> (${h.role}) 선택! 특기: ${h.tip}`;
+      Retro.sfx("select");
+      render();
+    });
+
+    foesEl.addEventListener("click", (e) => {
+      const b = e.target.closest(".unit");
+      if (!b || busy) return;
+      foe = Number(b.dataset.i);
+      const f = G.foes[foe];
+      logEl.innerHTML = `<b>${f.name}</b> 조준!${f.habit ? " 이 녀석은 " + HANDS[f.habit[0]].name + "를 자주 내요." : " 보스는 손을 읽기 어려워요."}`;
+      Retro.sfx("select");
+      render();
+    });
+
+    handsEl.addEventListener("click", (e) => {
+      const b = e.target.closest(".hand");
+      if (b && !busy) fight(b.dataset.hand);
+    });
+
+    // ── 효과 ──
+    function unitEl(isHero, i) { return (isHero ? heroesEl : foesEl).children[i]; }
+
+    function floatText(isHero, i, text, cls) {
+      const a = arena.getBoundingClientRect(), r = unitEl(isHero, i).getBoundingClientRect();
+      const t = document.createElement("span");
+      t.className = "float " + cls;
+      t.textContent = text;
+      t.style.left = Math.round(r.left - a.left + r.width / 2 - 16) + "px";
+      t.style.top = Math.round(r.top - a.top + 10) + "px";
+      arena.appendChild(t);
+      setTimeout(() => t.remove(), 950);
+    }
+
+    function burst(isHero, i) {
+      const a = arena.getBoundingClientRect(), r = unitEl(isHero, i).getBoundingClientRect();
+      const x = r.left - a.left + r.width / 2, y = r.top - a.top + r.height / 2;
+      const colors = [P.o, P.h, P.p, P.r, P.v];
+      for (let k = 0; k < 22; k++) {
+        const s = document.createElement("span"), ang = (k / 22) * Math.PI * 2, d = 50 + Math.random() * 60;
+        s.className = "spark";
+        s.style.left = Math.round(x) + "px";
+        s.style.top = Math.round(y) + "px";
+        s.style.background = colors[k % colors.length];
+        s.style.setProperty("--dx", Math.round((Math.cos(ang) * d) / 4) * 4 + "px");
+        s.style.setProperty("--dy", Math.round((Math.sin(ang) * d - 30) / 4) * 4 + "px");
+        arena.appendChild(s);
+        setTimeout(() => s.remove(), 850);
+      }
+    }
+
+    function hitFx(isHero, i) {
+      const el = unitEl(isHero, i);
+      el.classList.remove("hit");
+      void el.offsetWidth;
+      el.classList.add("hit");
+    }
+
+    // ── 한 턴 ──
+    function alive(list) { return list.map((u, i) => (u.hp > 0 ? i : -1)).filter((i) => i >= 0); }
+
+    function fight(mine) {
+      const h = G.heroes[hero], f = G.foes[foe];
+      if (h.hp <= 0 || f.hp <= 0) return;
+      busy = true;
+      const theirs = f.next;
+      const outcome = mine === theirs ? "draw" : HANDS[mine].beats === theirs ? "win" : "lose";
+      const vs = `${h.name}의 ${HANDS[mine].name} vs ${f.name}의 ${HANDS[theirs].name}`;
+      let msg = "";
+      f.peeked = false;
+
+      if (outcome === "win") {
+        streak++;
+        const special = mine === h.hand;
+        let healed = -1;
+        let dmg = 1;
+        if (special && h.role === "전사") dmg = 2;
+        f.hp = Math.max(0, f.hp - dmg);
+        msg = `${vs} → <b>이겼다!</b> ${f.name}에게 ${dmg} 피해`;
+        if (special && h.role === "마법사") {
+          const weakest = G.heroes.filter((u) => u.hp > 0 && u.hp < u.max).sort((a, b) => a.hp - b.hp)[0];
+          if (weakest) { weakest.hp++; healed = G.heroes.indexOf(weakest); msg += ` · ${weakest.name} 회복 +1`; }
+        }
+        if (special && h.role === "도적") msg += ` · ${f.name}의 다음 손을 엿봤어요!`;
+        Retro.playSample("mew", { offset: [0.10, 1.10, 2.16, 3.21][Math.floor(Math.random() * 4)], dur: 0.55, vol: 0.09, rate: 0.95 + Math.random() * 0.1 });
+        Retro.sfx("coin");
+        render();
+        floatText(false, foe, "-" + dmg, "dmg");
+        burst(false, foe);
+        if (healed >= 0) floatText(true, healed, "+1", "heal");
+        if (streak >= 3) { msg += " · <b>COMBO!</b>"; Retro.sfx("hype"); }
+        f.next = rollHand(f);
+        if (special && h.role === "도적") f.peeked = true;
+      } else if (outcome === "lose") {
+        streak = 0;
+        const dmg = f.double && Math.random() < f.double ? 2 : 1;
+        h.hp = Math.max(0, h.hp - dmg);
+        msg = `${vs} → <b>졌다…</b> ${h.name}이(가) ${dmg} 피해${dmg === 2 ? " (두 번 공격!)" : ""}`;
+        Retro.sfx("hit");
+        f.next = rollHand(f);
+        render();
+        floatText(true, hero, "-" + dmg, "dmg");
+        hitFx(true, hero);
+      } else {
+        streak = 0;
+        h.hp = Math.max(0, h.hp - 1);
+        f.hp = Math.max(0, f.hp - 1);
+        msg = `${vs} → <b>비겼다</b> 서로 1 피해`;
+        Retro.sfx("select");
+        f.next = rollHand(f);
+        render();
+        floatText(true, hero, "-1", "dmg");
+        floatText(false, foe, "-1", "dmg");
+      }
+      if (f.hp <= 0) msg += ` · <b>${f.name} 쓰러짐!</b>`;
+      if (h.hp <= 0) msg += ` · ${h.name} 쓰러짐…`;
+      logEl.innerHTML = msg;
+
+      // 쓰러졌으면 살아 있는 다음 캐릭터로 자동 선택
+      if (G.heroes[hero].hp <= 0 && alive(G.heroes).length) hero = alive(G.heroes)[0];
+      if (G.foes[foe].hp <= 0 && alive(G.foes).length) foe = alive(G.foes)[0];
+
+      setTimeout(() => {
+        render();
+        if (!alive(G.foes).length) return end(true);
+        if (!alive(G.heroes).length) return end(false);
+        busy = false;
+      }, 450);
+    }
+
+    // ── 끝 ──
+    const finalEl = document.getElementById("final");
+    function end(won) {
+      document.getElementById("finalArt").innerHTML = Retro.svg(won ? S.trophy : S.sadFace, {}, "art");
+      document.getElementById("finalTitle").textContent = won ? "소음 군단 격파!" : "GAME OVER";
+      document.getElementById("finalText").textContent = won
+        ? `살아남은 고양이 ${alive(G.heroes).length}마리. 동네가 다시 조용해졌어요!`
+        : "고양이들이 모두 지쳤어요. 다시 도전해 볼까요?";
+      finalEl.hidden = false;
+      Retro.sfx(won ? "clear" : "over");
+      document.getElementById("againBtn").focus();
+    }
+
+    function start() {
+      G = newGame();
+      G.foes.forEach((f) => { f.next = rollHand(f); f.peeked = false; });
+      hero = 0; foe = 0; busy = false; streak = 0;
+      finalEl.hidden = true;
+      logEl.textContent = "고양이와 악당을 고른 뒤 손을 내요.";
+      render();
+    }
+
+    document.getElementById("againBtn").addEventListener("click", () => { Retro.sfx("start"); start(); });
+    start();
+  </script>
+</body>
+</html>

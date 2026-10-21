@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ryan-portfolio · arcade</title>
+  <!-- 임시 게임 폰트: Galmuri11 (한글 픽셀 폰트, 내 폴더에 있는 파일) -->
+  <link href="fonts/galmuri11.css" rel="stylesheet">
+  <link href="retro.css" rel="stylesheet">
+  <style>
+    /* 게임 선택: 게임기 카트리지처럼 생긴 카드 세 장 */
+    .games {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 36px;
+      margin-top: 44px;
+      list-style: none;
+    }
+
+    .card {
+      --frame: var(--violet);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 12px;
+      background: var(--ink);
+      color: var(--cream);
+      text-decoration: none;
+    }
+
+    .card:hover, .card:focus-visible { --frame: var(--orange); transform: translateY(calc(var(--px) * -1)); }
+    .card:focus-visible { outline: none; }
+
+    /* 썸네일: 게임 화면과 같은 픽셀 스프라이트로 그려요 */
+    .thumb {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 4 / 3;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      background: var(--night);
+      box-shadow: 0 0 0 var(--px) var(--night);
+    }
+
+    .card-body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 10px;
+      padding: 20px 4px 4px;
+    }
+
+    .card h2 {
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--orange-hi);
+      text-shadow: 3px 3px 0 var(--night);
+    }
+
+    .card p { font-size: 15px; line-height: 1.7; color: var(--soft); }
+
+    .card-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: auto;
+      padding-top: 14px;
+    }
+
+    .card-best { font-size: 15px; color: var(--soft); font-variant-numeric: tabular-nums; letter-spacing: 0.06em; }
+    .card-best span { color: var(--orange-hi); }
+
+    .cursor { display: inline-block; width: 10px; height: 18px; margin-left: 8px; vertical-align: -3px; background: var(--orange); }
+
+    .card .btn { padding: 10px 16px; font-size: 16px; }
+    .card:hover .btn { background: var(--orange-hi); }
+
+    /* 라이트 모드 카드 */
+    body.light .card { background: #e9e1fb; color: var(--night); }
+    body.light .card h2 { color: var(--orange-lo); text-shadow: 3px 3px 0 var(--cream); }
+    body.light .card p, body.light .card-best { color: var(--ink); }
+    body.light .card-best span { color: var(--orange-lo); }
+
+    /* 카드 수가 홀수면 마지막 카드는 가운데에 */
+    .games li:last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; width: calc(50% - 18px); }
+
+    @media (max-width: 900px) {
+      .games { grid-template-columns: 1fr; max-width: 460px; margin-inline: auto; }
+      .games li:last-child:nth-child(odd) { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="index.html" id="backLink"><span data-px="arrowL"></span>Back</a>
+      <div class="top-right">
+        <button class="btn-ghost" id="themeBtn" type="button"></button>
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <h1 class="band">ARCADE</h1>
+    <p class="how">플레이할 게임을 골라요<span class="cursor blink" aria-hidden="true"></span></p>
+
+    <ul class="games">
+      <li>
+        <a class="card px-frame" href="catch.html">
+          <canvas class="thumb" id="thumbCatch" width="128" height="96" aria-hidden="true"></canvas>
+          <div class="card-body">
+            <h2>Record Catch</h2>
+            <p>떨어지는 레코드판을 고양이로 받아요. 빨간 X는 피하세요.</p>
+            <div class="card-foot">
+              <span class="card-best">HI <span id="bestCatch">000000</span></span>
+              <span class="btn">Play <span data-px="arrowR"></span></span>
+            </div>
+          </div>
+        </a>
+      </li>
+      <li>
+        <a class="card px-frame" href="puzzle.html">
+          <canvas class="thumb" id="thumbPuzzle" width="128" height="96" aria-hidden="true"></canvas>
+          <div class="card-body">
+            <h2>Cat Puzzle</h2>
+            <p>여러 모양의 고양이들을 끌어다 5×5 방에 빈틈없이 채워요.</p>
+            <div class="card-foot">
+              <span class="card-best">CLEAR <span id="bestPuzzle">0</span>/3</span>
+              <span class="btn">Play <span data-px="arrowR"></span></span>
+            </div>
+          </div>
+        </a>
+      </li>
+      <li>
+        <a class="card px-frame" href="run.html">
+          <canvas class="thumb" id="thumbRun" width="128" height="96" aria-hidden="true"></canvas>
+          <div class="card-body">
+            <h2>Cat Run</h2>
+            <p>밤길을 달리며 스피커를 뛰어넘고, 날아오는 레코드를 피해요.</p>
+            <div class="card-foot">
+              <span class="card-best">HI <span id="bestRun">000000</span></span>
+              <span class="btn">Play <span data-px="arrowR"></span></span>
+            </div>
+          </div>
+        </a>
+      </li>
+      <li>
+        <a class="card px-frame" href="rps.html">
+          <canvas class="thumb" id="thumbRps" width="128" height="96" aria-hidden="true"></canvas>
+          <div class="card-body">
+            <h2>Rock Paper Scissors</h2>
+            <p>가위, 바위, 보 중 하나를 골라 컴퓨터와 대결해요.</p>
+            <div class="card-foot">
+              <span class="card-best">WINS <span id="bestRps">000000</span></span>
+              <span class="btn">Play <span data-px="arrowR"></span></span>
+            </div>
+          </div>
+        </a>
+      </li>
+      <li>
+        <a class="card px-frame" href="brick.html">
+          <canvas class="thumb" id="thumbBrick" width="128" height="96" aria-hidden="true"></canvas>
+          <div class="card-body">
+            <h2>Brick Break</h2>
+            <p>패들로 공을 튕겨 알록달록한 벽돌을 모두 깨요.</p>
+            <div class="card-foot">
+              <span class="card-best">HI <span id="bestBrick">000000</span></span>
+              <span class="btn">Play <span data-px="arrowR"></span></span>
+            </div>
+          </div>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script src="retro.js"></script>
+  <script>
+    Retro.icons();
+    Retro.mountMute(document.getElementById("soundBtn"));
+    Retro.mountTheme(document.getElementById("themeBtn")); // 썸네일은 1초에 6번 다시 그려서 바로 따라와요
+
+    // 뒤로 가기: index.html에서 왔다면 브라우저 기록으로 되돌아가요
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /index\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    // 각 게임의 최고 기록
+    function showBest() {
+      try {
+        document.getElementById("bestCatch").textContent = Retro.pad(Number(localStorage.getItem("arcade-best")) || 0);
+        document.getElementById("bestPuzzle").textContent = Number(localStorage.getItem("puzzle-clear")) || 0;
+        document.getElementById("bestRun").textContent = Retro.pad(Number(localStorage.getItem("run-best")) || 0);
+        document.getElementById("bestRps").textContent = Retro.pad(Number(localStorage.getItem("rps-wins")) || 0);
+        document.getElementById("bestBrick").textContent = Retro.pad(Number(localStorage.getItem("brick-best")) || 0);
+      } catch (e) {}
+    }
+    showBest();
+    // 게임에서 뒤로 돌아왔을 때도 기록을 새로 보여줘요
+    window.addEventListener("pageshow", showBest);
+
+    // 카드를 고르면 '삑' 소리
+    document.querySelectorAll(".card").forEach((card) => card.addEventListener("click", () => Retro.sfx("select")));
+
+    // ── 썸네일 (128×96 픽셀, 게임과 같은 스프라이트) ──
+    const P = Retro.PAL, S = Retro.SPR;
+    const TW = 128, TH = 96;
+
+    // 공통 밤하늘: 세 층 + 체크무늬 경계 + 반짝이는 별 + 달
+    const skyStars = [[8, 6], [30, 18], [52, 8], [70, 26], [90, 12], [14, 34], [44, 40], [104, 38], [118, 22], [64, 46]];
+    // 썸네일 배경 색: 게임 화면과 같은 다크(밤하늘) / 라이트(낮하늘)
+    const theme = () => Retro.isLight()
+      ? { s1: P.c, s2: "#efe8fc", s3: "#e2d8fb", hill: "#cfc2f7", ground: P.p, pebble: "#9c87f2", star: P.p, twinkle: P.h, room: "#cfc2f7", tileA: "#efe8fc", tileB: "#e2d8fb" }
+      : { s1: P.k, s2: P.d, s3: P.i, hill: P.d, ground: P.k, pebble: P.i, star: P.p, twinkle: P.c, room: P.d, tileA: P.k, tileB: P.i };
+
+    function sky(g, t, ground) {
+      const T = theme();
+      g.fillStyle = T.s1; g.fillRect(0, 0, TW, 30);
+      g.fillStyle = T.s2; g.fillRect(0, 30, TW, 24);
+      g.fillStyle = T.s3; g.fillRect(0, 54, TW, ground - 54);
+      [[30, T.s1], [54, T.s2]].forEach(([y, col]) => {
+        g.fillStyle = col;
+        for (let x = 0; x < TW; x += 2) { g.fillRect(x, y, 1, 1); g.fillRect(x + 1, y + 2, 1, 1); }
+      });
+      skyStars.forEach(([x, y], i) => {
+        const on = (t + i * 3) % 12 === 0;
+        g.fillStyle = on ? T.twinkle : T.star;
+        g.fillRect(x, y, 1, 1);
+        if (on) { g.fillRect(x - 1, y, 3, 1); g.fillRect(x, y - 1, 1, 3); }
+      });
+      Retro.draw(g, S.moon, TW - 22, 6);
+    }
+
+    function ground(g, y, offset = 0) {
+      const T = theme();
+      g.fillStyle = T.ground; g.fillRect(0, y, TW, TH - y);
+      g.fillStyle = P.v; g.fillRect(0, y, TW, 1);
+      g.fillStyle = T.pebble;
+      for (let x = 0; x < TW + 16; x += 13) g.fillRect(((x - offset) % (TW + 16) + TW + 16) % (TW + 16) - 8, y + 4 + (x % 3) * 3, 3, 1);
+    }
+
+    // 1) Record Catch: 레코드와 X가 떨어지고, 고양이가 좌우로
+    function drawCatch(g, t) {
+      sky(g, t, 84);
+      g.fillStyle = theme().hill;
+      for (let x = 0; x < TW; x += 8) {
+        const h = 6 + Math.round(4 * Math.sin(x / 20) + 2 * Math.sin(x / 7));
+        g.fillRect(x, 84 - h, 8, h);
+      }
+      ground(g, 84);
+      const fall = (x, speed, phase) => ((t * speed + phase) % 90) - 10;
+      Retro.draw(g, t % 2 ? S.recordB : S.recordA, 22, fall(22, 4, 10));
+      Retro.draw(g, t % 2 ? S.recordA : S.recordB, 92, fall(92, 3, 50));
+      Retro.draw(g, S.bad, 60, fall(60, 5, 30));
+      const cx = 52 + Math.round(Math.sin(t / 4) * 22);
+      Retro.draw(g, t % 10 === 0 ? S.catBlink : S.catFace, cx, 64 + (t % 2 ? -1 : 0));
+    }
+
+    // 2) Cat Puzzle: 체크무늬 방에 고양이 조각이 하나씩 들어가요
+    const PUZ = ["AAABB", "ACCBB", "ACCDB", "EEDDD", "EEEED"];
+    const COATS = { A: [P.o, P.l], B: [P.p, P.v], C: [P.h, P.o], D: [P.v, P.i], E: [P.c, P.p] };
+    function drawPuzzle(g, t) {
+      g.fillStyle = theme().room; g.fillRect(0, 0, TW, TH);
+      const U = 16, ox = 24, oy = 8;
+      // 방 테두리와 바닥
+      g.fillStyle = P.v; g.fillRect(ox - 2, oy - 2, U * 5 + 4, U * 5 + 4);
+      for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
+        g.fillStyle = (r + c) % 2 ? theme().tileB : theme().tileA;
+        g.fillRect(ox + c * U, oy + r * U, U, U);
+      }
+      // 시간에 따라 A → B → C … 순서로 채워지고, 다 차면 처음부터
+      const shown = "ABCDE".slice(0, (Math.floor(t / 4) % 7));
+      [..."ABCDE"].forEach((ch) => {
+        if (!shown.includes(ch)) return;
+        const [m, s] = COATS[ch];
+        let head = null;
+        PUZ.forEach((row, r) => [...row].forEach((v, c) => {
+          if (v !== ch) return;
+          const x = ox + c * U, y = oy + r * U;
+          g.fillStyle = m; g.fillRect(x, y, U, U);
+          g.fillStyle = P.k;
+          if (PUZ[r - 1]?.[c] !== ch) g.fillRect(x, y, U, 1);
+          if (PUZ[r + 1]?.[c] !== ch) g.fillRect(x, y + U - 1, U, 1);
+          if (row[c - 1] !== ch) g.fillRect(x, y, 1, U);
+          if (row[c + 1] !== ch) g.fillRect(x + U - 1, y, 1, U);
+          g.fillStyle = s;
+          if (PUZ[r + 1]?.[c] !== ch) g.fillRect(x + 1, y + U - 2, U - 2, 1);
+          head ||= [x, y];
+        }));
+        Retro.draw(g, S.catFace, head[0], head[1], { map: { o: m, l: s } });
+      });
+    }
+
+    // 3) Cat Run: 고양이가 달리며 스피커를 뛰어넘어요
+    function drawRun(g, t) {
+      sky(g, t, 76);
+      g.fillStyle = theme().hill;
+      for (let i = 0; i < TW / 4 + 1; i++) {
+        const k = i + Math.floor(t / 2);
+        const h = 6 + Math.round(4 * Math.sin(k / 6) + 2 * Math.sin(k / 2.3));
+        g.fillRect(i * 4, 76 - h, 4, h);
+      }
+      ground(g, 76, t * 3);
+      // 스피커가 오른쪽에서 다가와요
+      const sx = TW - ((t * 4) % (TW + 30));
+      g.fillStyle = P.k; g.fillRect(sx - 1, 59, 14, 17);
+      g.fillStyle = P.i; g.fillRect(sx, 60, 12, 16);
+      g.fillStyle = P.v; g.fillRect(sx, 60, 12, 1); g.fillRect(sx, 60, 1, 16);
+      Retro.draw(g, S.cone, sx + 3, 68);
+      // 스피커가 가까우면 점프
+      const near = sx - 26;
+      const jumpY = near > -12 && near < 22 ? Math.round(Math.sin(((near + 12) / 34) * Math.PI) * 20) : 0;
+      Retro.draw(g, jumpY || t % 2 ? S.catRunA : S.catRunB, 20, 63 - jumpY);
+    }
+
+    // 4) Rock Paper Scissors: 밝은 크림 판에 손 세 개, 하나씩 통통
+    function drawRps(g, t) {
+      g.fillStyle = P.c; g.fillRect(0, 0, TW, TH);
+      g.fillStyle = "#e9e1fb"; // 옅은 연보라 체크무늬
+      for (let y = 0; y < TH; y += 16) for (let x = (y / 16) % 2 ? 16 : 0; x < TW; x += 32) g.fillRect(x, y, 16, 16);
+      const hands = [S.handScissors, S.handRock, S.handPaper];
+      const pads = [P.o, P.p, P.r];
+      hands.forEach((h, i) => {
+        const x = 6 + i * 40, jump = Math.floor(t / 3) % 3 === i ? -4 : 0;
+        g.fillStyle = P.k; g.fillRect(x - 1, 27 + jump, 38, 38);
+        g.fillStyle = pads[i]; g.fillRect(x, 28 + jump, 36, 36);
+        Retro.draw(g, h, x + 2, 30 + jump, { s: 2 });
+      });
+      // 반짝이
+      if (t % 2) { g.fillStyle = P.o; g.fillRect(6, 8, 2, 6); g.fillRect(4, 10, 6, 2); g.fillRect(118, 80, 2, 6); g.fillRect(116, 82, 6, 2); }
+    }
+
+    // 5) Brick Break: 알록달록한 벽돌, 패들, 통통 튀는 공
+    function drawBrick(g, t) {
+      g.fillStyle = theme().s1; g.fillRect(0, 0, TW, TH);
+      g.fillStyle = theme().s2; g.fillRect(0, 56, TW, TH - 56);
+      g.fillStyle = P.v; g.fillRect(0, 4, 2, TH); g.fillRect(TW - 2, 4, 2, TH); g.fillRect(0, 4, TW, 2);
+      const rows = [[P.r, "#ffb0a8", "#c94a4a"], [P.o, P.h, P.l], [P.h, P.c, P.o], [P.p, "#ddd3ff", P.v], [P.v, P.p, P.i]];
+      rows.forEach(([face, hi, lo], r) => {
+        for (let c = 0; c < 8; c++) {
+          if ((r * 8 + c + Math.floor(t / 6)) % 23 === 0) continue; // 가끔 한 칸씩 깨진 것처럼
+          const x = 6 + c * 15, y = 12 + r * 7;
+          g.fillStyle = face; g.fillRect(x, y, 14, 6);
+          g.fillStyle = hi; g.fillRect(x, y, 14, 1);
+          g.fillStyle = lo; g.fillRect(x, y + 5, 14, 1);
+        }
+      });
+      // 패들이 좌우로, 공은 통통
+      const px = 44 + Math.round(Math.sin(t / 5) * 24);
+      g.fillStyle = P.o; g.fillRect(px, 84, 22, 4);
+      g.fillStyle = P.h; g.fillRect(px + 1, 84, 20, 1);
+      const bx = px + 9, by = 78 - Math.abs(Math.round(Math.sin(t / 2.5) * 16));
+      g.fillStyle = P.c; g.fillRect(bx, by, 3, 3);
+    }
+
+    const thumbs = [
+      [document.getElementById("thumbCatch"), drawCatch],
+      [document.getElementById("thumbPuzzle"), drawPuzzle],
+      [document.getElementById("thumbRun"), drawRun],
+      [document.getElementById("thumbRps"), drawRps],
+      [document.getElementById("thumbBrick"), drawBrick],
+    ].map(([cv, fn]) => { const g = cv.getContext("2d"); g.imageSmoothingEnabled = false; return [g, fn]; });
+
+    // 8bit 느낌으로 1초에 6번만 움직여요 (움직임 줄이기 설정이면 멈춘 그림)
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let t = 0;
+    const paint = () => thumbs.forEach(([g, fn]) => fn(g, t));
+    paint();
+    if (!still) setInterval(() => { t++; paint(); }, 160);
+  </script>
+</body>
+</html>

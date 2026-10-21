@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ryan-portfolio · cat run</title>
+  <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" rel="stylesheet">
+  <!-- 임시 게임 폰트: Galmuri11 (한글 픽셀 폰트) -->
+  <link href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css" rel="stylesheet">
+  <link href="retro.css" rel="stylesheet">
+  <style>
+    .board { max-width: 880px; --screen-ratio: 5 / 2; }
+    .screen { aspect-ratio: 5 / 2; cursor: pointer; touch-action: none; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="arcade.html" id="backLink"><span data-px="arrowL"></span>Back</a>
+      <div class="top-right">
+        <span class="hi">HI <span id="best">000000</span></span>
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <h1 class="band">RUN</h1>
+    <p class="how">밤길을 달리는 고양이가 스피커를 뛰어넘어요. 날아오는 빨간 레코드는 낮으면 뛰고, 높으면 숙여서 피하세요.<br>Space · ↑ 또는 화면을 눌러 점프, ↓로 숙이기, ESC로 잠시 멈춰요.</p>
+
+    <main class="board px-frame">
+      <canvas class="screen" id="game" width="320" height="128" aria-label="달리는 고양이 게임 화면"></canvas>
+      <div class="hud">
+        <span>Score <span class="num" id="score">000000</span></span>
+        <span>Speed <span class="num" id="level">1.0</span></span>
+      </div>
+
+      <div class="overlay" id="overlay">
+        <h2 id="overlayTitle">Cat Run</h2>
+        <p id="overlayText">스피커에 부딪히면 끝나요. 오래 달릴수록 점수가 올라가요.</p>
+        <div class="actions">
+          <button class="btn-ghost" id="quitBtn" type="button" hidden>Quit</button>
+          <button class="btn" id="playBtn" type="button">Play</button>
+        </div>
+        <p class="press blink" id="press">PRESS ENTER</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="retro.js"></script>
+  <script>
+    Retro.icons();
+    Retro.mountMute(document.getElementById("soundBtn"));
+
+    // 뒤로 가기: arcade.html에서 왔다면 브라우저 기록으로 되돌아가요
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /arcade\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    // ── 게임: 구글 공룡 달리기처럼, 고양이가 달리며 장애물을 피해요 (320×128 픽셀) ──
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
+    const GROUND = H - 22; // 고양이 발이 닿는 높이
+    const P = Retro.PAL, S = Retro.SPR;
+
+    const scoreEl = document.getElementById("score");
+    const levelEl = document.getElementById("level");
+    const bestEl = document.getElementById("best");
+    const overlay = document.getElementById("overlay");
+    const overlayTitle = document.getElementById("overlayTitle");
+    const overlayText = document.getElementById("overlayText");
+    const pressEl = document.getElementById("press");
+    const playBtn = document.getElementById("playBtn");
+    const quitBtn = document.getElementById("quitBtn");
+
+    let best = 0;
+    try { best = Number(localStorage.getItem("run-best")) || 0; } catch (e) {}
+    bestEl.textContent = Retro.pad(best);
+
+    // 배경 층: 별(아주 느리게) · 먼 언덕(느리게) · 땅(빠르게)
+    const stars = Array.from({ length: 36 }, () => ({ x: Math.random() * W, y: Math.floor(Math.random() * (GROUND - 40)), tw: Math.floor(Math.random() * 120) }));
+    const hills = Array.from({ length: W / 4 + 1 }, (_, i) => 8 + Math.round(5 * Math.sin(i / 6) + 3 * Math.sin(i / 2.3)));
+
+    const BASE_SPEED = 2.4, MAX_SPEED = 6;
+    const cat = { x: 34, y: GROUND, vy: 0, duck: false, legT: 0 };
+    let obstacles = [], pebbles = [], speed = BASE_SPEED, dist = 0, score = 0, nextIn = 0, flash = 0, hillX = 0, tick = 0;
+    let running = false, paused = false, last = 0, jumpHeld = false;
+
+    function reset() {
+      obstacles = []; speed = BASE_SPEED; dist = 0; score = 0; nextIn = 40; flash = 0;
+      cat.y = GROUND; cat.vy = 0; cat.duck = false; jumpHeld = false;
+      pebbles = Array.from({ length: 16 }, (_, i) => ({ x: i * 22 + Math.floor(Math.random() * 12), y: GROUND + 5 + Math.floor(Math.random() * 3) * 5, w: 2 + Math.floor(Math.random() * 5) }));
+      scoreEl.textContent = Retro.pad(0);
+      levelEl.textContent = "1.0";
+    }
+
+    const onGround = () => cat.y >= GROUND;
+
+    function jump() {
+      if (!running || !onGround() || cat.duck) return;
+      cat.vy = -5.8;
+      jumpHeld = true;
+      Retro.sfx("jump");
+    }
+
+    // 장애물: 스피커(뛰어넘기) / 날아오는 레코드(낮으면 점프, 높으면 숙이기)
+    function spawn() {
+      const flying = score > 250 && Math.random() < 0.3;
+      if (flying) {
+        const low = Math.random() < 0.5;
+        obstacles.push({ kind: "record", x: W + 12, y: low ? GROUND - 9 : GROUND - 14, w: 12, h: 12 });
+      } else {
+        const count = score > 150 && Math.random() < 0.35 ? 2 : 1;
+        let x = W + 8;
+        for (let i = 0; i < count; i++) {
+          const h = 12 + Math.floor(Math.random() * 3) * 5;
+          const w = 10 + Math.floor(Math.random() * 2) * 2;
+          obstacles.push({ kind: "speaker", x, y: GROUND - h, w, h });
+          x += w + 2;
+        }
+      }
+      // 속도가 빠를수록 간격도 넓혀서 항상 피할 수 있게
+      nextIn = 50 + Math.random() * 55 + speed * 5;
+    }
+
+    function catBox() {
+      return cat.duck && onGround()
+        ? { x: cat.x + 1, y: GROUND - 7, w: 18, h: 7 }
+        : { x: cat.x + 2, y: cat.y - 12, w: 14, h: 12 };
+    }
+
+    function hits(a, b) {
+      const m = 2; // 살짝 너그럽게
+      return a.x + m < b.x + b.w && a.x + a.w - m > b.x && a.y + m < b.y + b.h && a.y + a.h - m > b.y;
+    }
+
+    function update(step) {
+      tick++;
+      // 점프: 키를 오래 누르면 조금 더 높이
+      const g = jumpHeld && cat.vy < 0 ? 0.22 : 0.38;
+      cat.vy += g * step;
+      if (cat.duck && !onGround()) cat.vy += 0.36 * step; // 공중에서 ↓ = 빨리 내려오기
+      cat.y += cat.vy * step;
+      if (cat.y >= GROUND) { cat.y = GROUND; cat.vy = 0; }
+      cat.legT += speed * 0.06 * step;
+
+      speed = Math.min(MAX_SPEED, speed + 0.00064 * step);
+      dist += speed * step;
+      const s = Math.floor(dist / 4.8);
+      if (Math.floor(s / 100) > Math.floor(score / 100)) { flash = 48; Retro.sfx("milestone"); }
+      score = s;
+      scoreEl.textContent = Retro.pad(score);
+      levelEl.textContent = (speed / BASE_SPEED).toFixed(1);
+
+      pebbles.forEach((d) => { d.x -= speed * step; if (d.x < -8) d.x += W + 16; });
+      stars.forEach((st) => { st.x -= speed * 0.05 * step; if (st.x < 0) st.x += W; });
+      hillX = (hillX + speed * 0.25 * step) % 4;
+      if (hillX < speed * 0.25 * step) hills.push(hills.shift());
+
+      nextIn -= step;
+      if (nextIn <= 0) spawn();
+
+      const box = catBox();
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const o = obstacles[i];
+        o.x -= speed * step * (o.kind === "record" ? 1.15 : 1);
+        if (o.x + o.w < -8) { obstacles.splice(i, 1); continue; }
+        const ob = o.kind === "record" ? { x: o.x - 6, y: o.y - 6, w: 12, h: 12 } : o;
+        if (hits(box, ob)) return gameOver();
+      }
+      if (flash > 0) flash -= step;
+    }
+
+    // ── 그리기 ──
+    function drawSpeaker(o) {
+      const x = Math.round(o.x), y = Math.round(o.y);
+      ctx.fillStyle = P.k;
+      ctx.fillRect(x - 1, y - 1, o.w + 2, o.h + 1);
+      ctx.fillStyle = P.i;
+      ctx.fillRect(x, y, o.w, o.h);
+      ctx.fillStyle = P.v;
+      ctx.fillRect(x, y, o.w, 1);
+      ctx.fillRect(x, y, 1, o.h);
+      Retro.draw(ctx, S.cone, x + Math.floor((o.w - 6) / 2), y + o.h - 8);
+      if (o.h > 14) {
+        ctx.fillStyle = P.p;
+        ctx.fillRect(x + Math.floor(o.w / 2) - 1, y + 3, 2, 2);
+      }
+    }
+
+    function drawScene() {
+      ctx.imageSmoothingEnabled = false;
+      // 하늘: 세 층 + 경계 체크무늬
+      ctx.fillStyle = P.k; ctx.fillRect(0, 0, W, 44);
+      ctx.fillStyle = P.d; ctx.fillRect(0, 44, W, 34);
+      ctx.fillStyle = P.i; ctx.fillRect(0, 78, W, GROUND - 78);
+      [[44, P.k], [78, P.d]].forEach(([y, col]) => {
+        ctx.fillStyle = col;
+        for (let x = 0; x < W; x += 2) { ctx.fillRect(x, y, 1, 1); ctx.fillRect(x + 1, y + 2, 1, 1); }
+      });
+      stars.forEach((s) => {
+        const on = (tick + s.tw) % 120 < 8;
+        ctx.fillStyle = on ? P.c : P.p;
+        ctx.fillRect(Math.round(s.x), s.y, 1, 1);
+      });
+      Retro.draw(ctx, S.moon, W - 40, 10, { s: 2 });
+
+      // 먼 언덕 (계단 모양)
+      ctx.fillStyle = P.d;
+      hills.forEach((h, i) => ctx.fillRect(Math.round(i * 4 - hillX), GROUND - h, 4, h));
+
+      // 땅
+      ctx.fillStyle = P.k;
+      ctx.fillRect(0, GROUND, W, H - GROUND);
+      ctx.fillStyle = P.v;
+      ctx.fillRect(0, GROUND, W, 1);
+      ctx.fillStyle = P.i;
+      pebbles.forEach((d) => ctx.fillRect(Math.round(d.x), d.y, d.w, 1));
+
+      obstacles.forEach((o) => {
+        if (o.kind === "record") Retro.draw(ctx, tick % 8 < 4 ? S.recordA : S.recordB, o.x - 6, o.y - 6, { map: { o: P.r } });
+        else drawSpeaker(o);
+      });
+
+      // 고양이: 달리기 2프레임 / 점프 / 숙이기
+      if (cat.duck && onGround()) Retro.draw(ctx, S.catDuck, cat.x, GROUND - 8);
+      else Retro.draw(ctx, !onGround() || Math.floor(cat.legT) % 2 ? S.catRunA : S.catRunB, cat.x, cat.y - 13);
+
+      // 100점마다 반짝
+      if (flash > 0 && Math.floor(flash / 6) % 2 === 0) {
+        Retro.text(ctx, `${Math.floor(score / 100) * 100}!`, W / 2, 18, { color: P.h, s: 2, align: "center" });
+      }
+    }
+
+    function frame(t) {
+      if (!running) return;
+      const step = last ? Math.min(3, (t - last) / 16.67) : 1;
+      last = t;
+      update(step);
+      if (!running) return;
+      drawScene();
+      requestAnimationFrame(frame);
+    }
+
+    function start() {
+      reset();
+      overlay.hidden = true;
+      quitBtn.hidden = true;
+      paused = false;
+      running = true;
+      last = 0;
+      Retro.sfx("start");
+      requestAnimationFrame(frame);
+    }
+
+    function showOverlay(title, text, btnText, withQuit) {
+      overlayTitle.textContent = title;
+      overlayText.textContent = text;
+      playBtn.textContent = btnText;
+      quitBtn.hidden = !withQuit;
+      pressEl.textContent = withQuit ? "PRESS ESC" : "PRESS ENTER";
+      overlay.hidden = false;
+      playBtn.focus();
+    }
+
+    function saveBest() {
+      if (score > best) {
+        best = score;
+        bestEl.textContent = Retro.pad(best);
+        try { localStorage.setItem("run-best", String(best)); } catch (e) {}
+      }
+    }
+
+    // ESC: 잠시 멈춤
+    function pause() {
+      if (!running) return;
+      running = false;
+      paused = true;
+      cat.duck = false; jumpHeld = false;
+      Retro.sfx("pause");
+      showOverlay("Paused", `지금 ${score}점. 계속할까요?`, "Resume", true);
+    }
+
+    function resume() {
+      if (!paused) return;
+      paused = false;
+      overlay.hidden = true;
+      quitBtn.hidden = true;
+      running = true;
+      last = 0;
+      Retro.sfx("resume");
+      requestAnimationFrame(frame);
+    }
+
+    // QUIT: 이번 판을 끝내고 첫 화면으로
+    function quit() {
+      paused = false;
+      saveBest();
+      reset();
+      drawScene();
+      Retro.sfx("select");
+      showOverlay("Cat Run", "스피커에 부딪히면 끝나요. 오래 달릴수록 점수가 올라가요.", "Play", false);
+    }
+
+    function gameOver() {
+      running = false;
+      drawScene();
+      saveBest();
+      Retro.sfx("hit");
+      Retro.sfx("over");
+      showOverlay("Game Over", `이번 점수는 ${score}점이에요. 최고 기록은 ${best}점!`, "Retry", false);
+    }
+
+    playBtn.addEventListener("click", () => (paused ? resume() : start()));
+    quitBtn.addEventListener("click", quit);
+
+    // 다른 탭으로 가면 자동으로 멈춰요
+    document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+
+    const isJump = (k) => k === " " || k === "ArrowUp" || k === "w" || k === "W";
+    const isDuck = (k) => k === "ArrowDown" || k === "s" || k === "S";
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (running) pause();
+        else if (paused) resume();
+        return;
+      }
+      if (running) {
+        if (isJump(e.key)) { e.preventDefault(); if (!e.repeat) jump(); }
+        if (isDuck(e.key)) { e.preventDefault(); cat.duck = true; }
+        return;
+      }
+      if ((e.key === "Enter" || e.key === " ") && !paused && document.activeElement !== playBtn && document.activeElement !== quitBtn) {
+        e.preventDefault();
+        start();
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (isJump(e.key)) jumpHeld = false;
+      if (isDuck(e.key)) cat.duck = false;
+    });
+
+    // 터치 · 클릭: 누르면 점프
+    canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); jump(); });
+    window.addEventListener("pointerup", () => { jumpHeld = false; });
+
+    // 시작 전에도 장면을 보여줘요
+    reset();
+    drawScene();
+  </script>
+</body>
+</html>

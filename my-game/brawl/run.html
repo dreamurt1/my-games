@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ryan-portfolio · cat run (brawl)</title>
+  <!-- 브롤 스타일 글꼴: Lilita One + Black Han Sans (내 폴더에 넣은 파일, 출처는 CREDITS.md) -->
+  <link href="../fonts/brawl-fonts.css" rel="stylesheet">
+  <link href="brawl.css" rel="stylesheet">
+  <style>
+    .board { max-width: 900px; --screen-ratio: 5 / 2; }
+    .screen { aspect-ratio: 5 / 2; cursor: pointer; }
+
+    /* 안내 카드는 화면이 납작해서 판 전체(점수판 포함)를 덮어요 */
+    .overlay { aspect-ratio: auto; bottom: clamp(8px, 2vw, 14px); }
+    /* 안내 화면이 판 전체를 덮을 때는 점수 칩을 숨겨서 안내판 뒤로 비치지 않게 */
+    .board:has(> .overlay:not([hidden])) .hud { visibility: hidden; }
+
+    /* 터치 기기에서만 보이는 숙이기 버튼 (꾹 누르는 동안 숙여요) */
+    .touch-ctl { display: none; }
+    @media (hover: none) and (pointer: coarse) {
+      .touch-ctl { display: inline-flex; touch-action: none; -webkit-user-select: none; user-select: none; }
+    }
+    .duck-btn { min-width: 112px; }
+    .duck-btn.is-down { transform: translateY(4px); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 2px 0 var(--ink); }
+
+    @media (max-width: 560px) {
+      .hud { flex-wrap: wrap; justify-content: center; }
+      .press { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="arcade.html" id="backLink" aria-label="아케이드로 돌아가기"><span data-icon="back"></span><span class="label">Back</span></a>
+      <div class="top-right">
+        <span class="hi"><span data-icon="trophy"></span>HI <span id="best">000000</span></span>
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <h1 class="band">RUN</h1>
+    <p class="how">햇살 가득한 길을 달리는 고양이가 스피커를 뛰어넘어요. 날아오는 레코드는 낮으면 뛰고, 높으면 숙여서 피하세요.<br><span class="desk-only">Space · ↑ 또는 화면을 눌러 점프, ↓로 숙이기, ESC로 잠시 멈춰요.</span><span class="touch-only">화면을 톡 눌러 점프, 숙이기 버튼을 꾹 눌러 숙여요.</span></p>
+
+    <main class="board">
+      <canvas class="screen" id="game" width="320" height="128" aria-label="달리는 고양이 게임 화면"></canvas>
+      <div class="hud">
+        <span class="chip"><span data-icon="star"></span>Score <span class="num" id="score">000000</span></span>
+        <button class="btn-ghost touch-ctl duck-btn" id="duckBtn" type="button">숙이기</button>
+        <span class="chip"><span data-icon="next"></span>Speed <span class="num" id="level">1.0</span></span>
+      </div>
+
+      <div class="overlay" id="overlay">
+        <h2 id="overlayTitle">Cat Run</h2>
+        <p id="overlayText">스피커에 부딪히면 끝나요. 오래 달릴수록 점수가 올라가요.</p>
+        <div class="actions">
+          <button class="btn-ghost" id="quitBtn" type="button" hidden>Quit</button>
+          <button class="btn go" id="playBtn" type="button">Play</button>
+        </div>
+        <p class="press blink" id="press">PRESS ENTER</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="../retro.js"></script>
+  <script src="toon.js"></script>
+  <script>
+    Toon.icons();
+    Toon.mountMute(document.getElementById("soundBtn"));
+
+    // 뒤로 가기: arcade.html에서 왔다면 브라우저 기록으로 되돌아가요
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /arcade\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    // ── 게임: 구글 공룡 달리기처럼, 고양이가 달리며 장애물을 피해요 (게임 좌표 320×128, 그림은 3배로 선명하게) ──
+    const canvas = document.getElementById("game");
+    const W = 320, H = 128;
+    const ctx = Toon.setup(canvas, W, H, 3);
+    const GROUND = H - 22; // 고양이 발이 닿는 높이
+    const C = Toon.C;
+
+    const scoreEl = document.getElementById("score");
+    const levelEl = document.getElementById("level");
+    const bestEl = document.getElementById("best");
+    const overlay = document.getElementById("overlay");
+    const overlayTitle = document.getElementById("overlayTitle");
+    const overlayText = document.getElementById("overlayText");
+    const pressEl = document.getElementById("press");
+    const playBtn = document.getElementById("playBtn");
+    const quitBtn = document.getElementById("quitBtn");
+    const duckBtn = document.getElementById("duckBtn");
+
+    let best = 0;
+    try { best = Number(localStorage.getItem("run-best")) || 0; } catch (e) {}
+    bestEl.textContent = Retro.pad(best);
+
+    // 배경 층(그림 전용): 구름(아주 느리게) · 먼 언덕(느리게) · 가까운 언덕 · 땅(빠르게)
+    const clouds = Array.from({ length: 5 }, (_, i) => ({ x: i * 74 + Math.random() * 30, y: 12 + Math.random() * 26, s: 0.8 + Math.random() * 0.6 }));
+    let farX = 0, nearX = 0, skySpin = 0;
+
+    const BASE_SPEED = 2.4, MAX_SPEED = 6;
+    const cat = { x: 34, y: GROUND, vy: 0, duck: false, legT: 0 };
+    let obstacles = [], pebbles = [], speed = BASE_SPEED, dist = 0, score = 0, nextIn = 0, flash = 0, tick = 0;
+    let running = false, paused = false, last = 0, jumpHeld = false;
+    let squash = 0, puffs = [], crashed = false; // 그림 전용: 착지 찌그러짐, 먼지, 부딪힘 표정
+
+    function reset() {
+      obstacles = []; speed = BASE_SPEED; dist = 0; score = 0; nextIn = 40; flash = 0;
+      cat.y = GROUND; cat.vy = 0; cat.duck = false; jumpHeld = false;
+      pebbles = Array.from({ length: 16 }, (_, i) => ({ x: i * 22 + Math.floor(Math.random() * 12), y: GROUND + 5 + Math.floor(Math.random() * 3) * 5, w: 2 + Math.floor(Math.random() * 5) }));
+      squash = 0; puffs = []; crashed = false;
+      scoreEl.textContent = Retro.pad(0);
+      levelEl.textContent = "1.0";
+    }
+
+    const onGround = () => cat.y >= GROUND;
+
+    function jump() {
+      if (!running || !onGround() || cat.duck) return;
+      cat.vy = -5.8;
+      jumpHeld = true;
+      Retro.sfx("jump");
+    }
+
+    // 장애물: 스피커(뛰어넘기) / 날아오는 레코드(낮으면 점프, 높으면 숙이기)
+    function spawn() {
+      const flying = score > 250 && Math.random() < 0.3;
+      if (flying) {
+        const low = Math.random() < 0.5;
+        obstacles.push({ kind: "record", x: W + 12, y: low ? GROUND - 9 : GROUND - 14, w: 12, h: 12 });
+      } else {
+        const count = score > 150 && Math.random() < 0.35 ? 2 : 1;
+        let x = W + 8;
+        for (let i = 0; i < count; i++) {
+          const h = 12 + Math.floor(Math.random() * 3) * 5;
+          const w = 10 + Math.floor(Math.random() * 2) * 2;
+          obstacles.push({ kind: "speaker", x, y: GROUND - h, w, h });
+          x += w + 2;
+        }
+      }
+      // 속도가 빠를수록 간격도 넓혀서 항상 피할 수 있게
+      nextIn = 50 + Math.random() * 55 + speed * 5;
+    }
+
+    function catBox() {
+      return cat.duck && onGround()
+        ? { x: cat.x + 1, y: GROUND - 7, w: 18, h: 7 }
+        : { x: cat.x + 2, y: cat.y - 12, w: 14, h: 12 };
+    }
+
+    function hits(a, b) {
+      const m = 2; // 살짝 너그럽게
+      return a.x + m < b.x + b.w && a.x + a.w - m > b.x && a.y + m < b.y + b.h && a.y + a.h - m > b.y;
+    }
+
+    function update(step) {
+      tick++;
+      // 점프: 키를 오래 누르면 조금 더 높이
+      const g = jumpHeld && cat.vy < 0 ? 0.22 : 0.38;
+      cat.vy += g * step;
+      if (cat.duck && !onGround()) cat.vy += 0.36 * step; // 공중에서 ↓ = 빨리 내려오기
+      cat.y += cat.vy * step;
+      if (cat.y >= GROUND) {
+        if (cat.vy > 1.5) { squash = 8; for (let i = 0; i < 4; i++) puffs.push({ x: cat.x + 4 + i * 3, y: GROUND, vx: (i - 1.5) * 0.4, r: 1.6 + Math.random(), life: 18 }); } // 착지 연출
+        cat.y = GROUND; cat.vy = 0;
+      }
+      cat.legT += speed * 0.06 * step;
+
+      speed = Math.min(MAX_SPEED, speed + 0.00064 * step);
+      dist += speed * step;
+      const s = Math.floor(dist / 4.8);
+      if (Math.floor(s / 100) > Math.floor(score / 100)) { flash = 48; Retro.sfx("milestone"); Toon.buzz("pick"); }
+      score = s;
+      scoreEl.textContent = Retro.pad(score);
+      levelEl.textContent = (speed / BASE_SPEED).toFixed(1);
+
+      pebbles.forEach((d) => { d.x -= speed * step; if (d.x < -8) d.x += W + 16; });
+      clouds.forEach((cl) => { cl.x -= speed * 0.06 * step; if (cl.x < -40) { cl.x += W + 80; cl.y = 12 + Math.random() * 26; } });
+      farX += speed * 0.18 * step;
+      nearX += speed * 0.45 * step;
+      skySpin += 0.0015 * step;
+      if (squash > 0) squash -= step;
+      puffs.forEach((p) => { p.x += (p.vx - speed * 0.5) * step; p.y -= 0.15 * step; p.life -= step; });
+      puffs = puffs.filter((p) => p.life > 0);
+
+      nextIn -= step;
+      if (nextIn <= 0) spawn();
+
+      const box = catBox();
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const o = obstacles[i];
+        o.x -= speed * step * (o.kind === "record" ? 1.15 : 1);
+        if (o.x + o.w < -8) { obstacles.splice(i, 1); continue; }
+        const ob = o.kind === "record" ? { x: o.x - 6, y: o.y - 6, w: 12, h: 12 } : o;
+        if (hits(box, ob)) return gameOver();
+      }
+      if (flash > 0) flash -= step;
+    }
+
+    // ── 그리기 (만화풍: 굵은 잉크 외곽선 + 그림자 + 반짝이) ──
+
+    // 뭉게구름: 잉크 테두리 원을 먼저, 그 위에 흰 원
+    function drawCloud(cl) {
+      const parts = [[0, 0, 7], [8, -3, 9], [17, 0, 7], [9, 3, 7]];
+      const s = cl.s;
+      ctx.fillStyle = C.ink;
+      parts.forEach(([dx, dy, r]) => { ctx.beginPath(); ctx.arc(cl.x + dx * s, cl.y + dy * s, r * s + 1.1, 0, Math.PI * 2); ctx.fill(); });
+      ctx.fillStyle = C.milk;
+      parts.forEach(([dx, dy, r]) => { ctx.beginPath(); ctx.arc(cl.x + dx * s, cl.y + dy * s, r * s, 0, Math.PI * 2); ctx.fill(); });
+      ctx.fillStyle = "#d4e6ff"; // 아래쪽 옅은 그림자
+      ctx.beginPath(); ctx.ellipse(cl.x + 9 * s, cl.y + 6 * s, 13 * s, 3 * s, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 둥근 언덕 띠: 옆으로 흐르는 물결 모양
+    function drawHills(offset, base, amp, wave, fill, line) {
+      ctx.beginPath();
+      ctx.moveTo(-4, H);
+      for (let x = -4; x <= W + 4; x += 4) {
+        const k = (x + offset) / wave;
+        ctx.lineTo(x, base - amp * (0.6 + 0.4 * Math.sin(k) + 0.25 * Math.sin(k * 2.3 + 1)));
+      }
+      ctx.lineTo(W + 4, H);
+      ctx.closePath();
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.lineWidth = line; ctx.strokeStyle = C.ink; ctx.stroke();
+    }
+
+    // 스피커: 보라 상자 + 큰 우퍼 + 작은 트위터
+    function drawSpeaker(o) {
+      const x = o.x, y = o.y, w = o.w, h = o.h;
+      Toon.box(ctx, x, y, w, h, 2.4, C.grape, { line: 1.2, drop: 1.4, gloss: 0.35, shade: 0.2 });
+      const wr = w * 0.33, wy = y + h - wr - 2.2;
+      const pulse = Math.sin(tick * 0.5 + x) * 0.25; // 쿵쿵 울리는 우퍼
+      Toon.ball(ctx, x + w / 2, wy, wr + 0.6, C.navy, { line: 1, shine: false, shade: 0 });
+      Toon.ball(ctx, x + w / 2, wy, wr * 0.55 + pulse, C.grapeHi, { line: 0.8, shine: false, shade: 0 });
+      if (h > 14) Toon.ball(ctx, x + w / 2, y + 4, 1.6, C.sun, { line: 0.8, shine: false, shade: 0 });
+    }
+
+    // 날아오는 레코드: 반짝이는 검은 판 + 빨간 라벨, 빙글빙글
+    function drawRecord(o) {
+      ctx.save();
+      ctx.translate(o.x, o.y);
+      // 뒤쪽 바람 줄
+      ctx.strokeStyle = "rgba(255,255,255,0.75)"; ctx.lineWidth = 1.1;
+      [-3, 2].forEach((dy, i) => { ctx.beginPath(); ctx.moveTo(8, dy); ctx.lineTo(13 + i * 3, dy); ctx.stroke(); });
+      Toon.ball(ctx, 0, 0, 6, "#2b2346", { line: 1.2, shine: false, shade: 0 });
+      ctx.strokeStyle = "rgba(255,255,255,0.16)"; ctx.lineWidth = 0.5;
+      [4.6, 3.6].forEach((r) => { ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke(); });
+      ctx.rotate(tick * 0.35);
+      ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.arc(0, 0, 4.4, -0.5, 0.5); ctx.stroke();
+      Toon.ball(ctx, 0, 0, 2.3, C.berry, { line: 0.8, shine: false, shade: 0 });
+      ctx.fillStyle = C.ink; ctx.beginPath(); ctx.arc(0, 0, 0.6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // 굵은 외곽선 막대 (다리 · 꼬리)
+    function limb(x1, y1, cx, cy, x2, y2, w, col) {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cx, cy, x2, y2);
+      ctx.strokeStyle = C.ink; ctx.lineWidth = w + 1.4; ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke();
+    }
+
+    // 고양이: 발끝 가운데 기준으로 그려요 (달리기 · 점프 · 숙이기 · 부딪힘)
+    function drawCat() {
+      const ground = onGround();
+      const ducking = cat.duck && ground;
+      const coat = C.cat, lo = Toon.tint(C.cat, -0.25);
+      const sq = squash > 0 ? 1 - 0.22 * Math.sin((squash / 8) * Math.PI) : 1;
+      ctx.save();
+      ctx.translate(cat.x + 9, cat.y);
+      ctx.scale(2 - sq, sq);
+
+      const swing = Math.sin(cat.legT * Math.PI);
+      if (ducking) {
+        // 납작 엎드려 기어가는 자세
+        limb(-6, -1.5, -7, 0, -8 + swing * 1.5, 0, 1.8, lo);
+        limb(-8, -2.5, -13, -3, -15, -6 + Math.sin(tick * 0.3) * 1, 1.9, coat); // 꼬리
+        ctx.beginPath(); ctx.ellipse(-1, -3.2, 9, 3.3, 0, 0, Math.PI * 2);
+        ctx.fillStyle = coat; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = C.ink; ctx.stroke();
+        limb(4, -1.5, 5, 0, 6 - swing * 1.5, 0, 1.8, coat);
+        Toon.cat(ctx, 8.5, -5.5, 11, { coat, mood: crashed ? "dizzy" : "happy", t: tick, line: 0.9 });
+      } else {
+        const air = !ground;
+        // 뒷다리 (어둡게) → 꼬리 → 몸 → 앞다리 → 머리
+        const bk = air ? -0.9 : swing, fr = air ? 0.9 : -swing;
+        limb(-4, -4, -5 + bk * 1.5, -2, -5 + bk * 3.2, 0, 1.9, lo);
+        limb(3, -4, 3 + fr * 1.5, -2, 3 + fr * 3.2, 0, 1.9, lo);
+        const wag = Math.sin(tick * 0.25) * 2;
+        limb(-6.5, -6.5, -12, -8, -12.5, -13 + wag, 1.9, coat);
+        ctx.beginPath(); ctx.ellipse(-0.5, -6, 7.2, 4.3, -0.05, 0, Math.PI * 2);
+        ctx.fillStyle = coat; ctx.fill();
+        ctx.save(); ctx.clip(); ctx.fillStyle = lo; ctx.fillRect(-9, -3.4, 18, 4); ctx.restore();
+        ctx.lineWidth = 1.2; ctx.strokeStyle = C.ink; ctx.stroke();
+        limb(-2, -4, -2 - bk * 1.5, -2, -2 - bk * 3.2, 0, 1.9, coat);
+        limb(5, -4, 5 - fr * 1.5, -2, 5 - fr * 3.2, 0, 1.9, coat);
+        const mood = crashed ? "dizzy" : air ? "grin" : tick % 200 < 6 ? "blink" : "default";
+        Toon.cat(ctx, 5.5, -11.5, 12.5, { coat, mood, look: 1, t: tick, line: 1 });
+      }
+      ctx.restore();
+
+      // 부딪히면 머리 위로 별이 빙글빙글
+      if (crashed) {
+        for (let i = 0; i < 3; i++) {
+          const a = tick * 0.12 + (i * Math.PI * 2) / 3;
+          Toon.star(ctx, cat.x + 14 + Math.cos(a) * 8, cat.y - 22 + Math.sin(a) * 2.5, 2.4, C.sun, { line: 0.7 });
+        }
+      }
+    }
+
+    function drawScene() {
+      // 하늘: 천천히 도는 햇살 줄무늬
+      Toon.sky(ctx, W, H, { top: "#8fd0ff", bottom: C.skyHi, cx: W * 0.82, cy: 14, spin: skySpin, rays: 16, ray: "rgba(255,255,255,0.12)" });
+      // 해
+      Toon.ball(ctx, W * 0.82, 14, 9, C.sun, { line: 1.4, shine: true, shade: 0.1 });
+      clouds.forEach(drawCloud);
+
+      // 먼 언덕(하늘색) → 가까운 언덕(초록)
+      drawHills(farX, GROUND - 14, 18, 34, "#7fd7c4", 1);
+      drawHills(nearX, GROUND - 2, 12, 22, C.leaf, 1.3);
+
+      // 땅: 풀 띠 + 사탕 줄무늬 흙
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, GROUND + 2, W, H - GROUND - 2); ctx.clip();
+      ctx.fillStyle = C.sun; ctx.fillRect(0, GROUND, W, H - GROUND);
+      ctx.fillStyle = Toon.tint(C.sun, -0.12);
+      const off = dist % 14;
+      for (let x = -14 - off; x < W + 14; x += 14) {
+        ctx.beginPath(); ctx.moveTo(x, H); ctx.lineTo(x + 7, H); ctx.lineTo(x + 7 + 12, GROUND); ctx.lineTo(x + 12, GROUND); ctx.closePath(); ctx.fill();
+      }
+      // 돌멩이
+      ctx.fillStyle = C.sunLo;
+      pebbles.forEach((d) => { ctx.beginPath(); ctx.ellipse(d.x, d.y + 2, d.w * 0.6, 1, 0, 0, Math.PI * 2); ctx.fill(); });
+      ctx.restore();
+      Toon.box(ctx, -4, GROUND - 1, W + 8, 4.5, 2, C.leaf, { line: 1.2, gloss: 0.3, shade: 0.25 });
+
+      // 먼지
+      puffs.forEach((p) => {
+        ctx.globalAlpha = Math.min(1, p.life / 10);
+        Toon.ball(ctx, p.x, p.y - 1, p.r, C.milk, { line: 0.6, shine: false, shade: 0 });
+      });
+      ctx.globalAlpha = 1;
+
+      obstacles.forEach((o) => (o.kind === "record" ? drawRecord(o) : drawSpeaker(o)));
+      drawCat();
+
+      // 100점마다 통통 튀는 숫자
+      if (flash > 0) {
+        const k = Math.min(1, (48 - flash) / 14);
+        const sc = Toon.springOut(k);
+        ctx.save();
+        ctx.translate(W / 2, 26);
+        ctx.scale(sc, sc);
+        ctx.rotate(-0.05);
+        Toon.star(ctx, -34, 0, 6, C.sun, { line: 1 });
+        Toon.star(ctx, 34, 0, 6, C.sun, { line: 1 });
+        Toon.text(ctx, `${Math.floor(score / 100) * 100}!`, 0, 0, { size: 18, color: C.sun });
+        ctx.restore();
+      }
+    }
+
+    function frame(t) {
+      if (!running) return;
+      const step = last ? Math.min(3, (t - last) / 16.67) : 1;
+      last = t;
+      update(step);
+      if (!running) return;
+      drawScene();
+      requestAnimationFrame(frame);
+    }
+
+    function start() {
+      reset();
+      overlay.hidden = true;
+      quitBtn.hidden = true;
+      paused = false;
+      running = true;
+      last = 0;
+      Retro.sfx("start");
+      requestAnimationFrame(frame);
+    }
+
+    function showOverlay(title, text, btnText, withQuit) {
+      overlayTitle.textContent = title;
+      overlayText.textContent = text;
+      playBtn.textContent = btnText;
+      quitBtn.hidden = !withQuit;
+      pressEl.textContent = withQuit ? "PRESS ESC" : "PRESS ENTER";
+      overlay.hidden = false;
+      playBtn.focus();
+    }
+
+    function saveBest() {
+      if (score > best) {
+        best = score;
+        bestEl.textContent = Retro.pad(best);
+        try { localStorage.setItem("run-best", String(best)); } catch (e) {}
+      }
+    }
+
+    // ESC: 잠시 멈춤
+    function pause() {
+      if (!running) return;
+      running = false;
+      paused = true;
+      cat.duck = false; jumpHeld = false;
+      duckBtn.classList.remove("is-down");
+      Retro.sfx("pause");
+      showOverlay("Paused", `지금 ${score}점. 계속할까요?`, "Resume", true);
+    }
+
+    function resume() {
+      if (!paused) return;
+      paused = false;
+      overlay.hidden = true;
+      quitBtn.hidden = true;
+      running = true;
+      last = 0;
+      Retro.sfx("resume");
+      requestAnimationFrame(frame);
+    }
+
+    // QUIT: 이번 판을 끝내고 첫 화면으로
+    function quit() {
+      paused = false;
+      saveBest();
+      reset();
+      drawScene();
+      Retro.sfx("select");
+      showOverlay("Cat Run", "스피커에 부딪히면 끝나요. 오래 달릴수록 점수가 올라가요.", "Play", false);
+    }
+
+    function gameOver() {
+      running = false;
+      crashed = true;
+      const record = best > 0 && score > best; // 새 기록이면 축하 진동
+      drawScene();
+      saveBest();
+      Retro.sfx("hit");
+      Retro.sfx("over");
+      // 진동: 부딪힘(강하게) → 게임 오버(아주 강하게) → 새 기록이면 축하
+      Toon.buzz("hit");
+      setTimeout(() => Toon.buzz("over"), 240);
+      if (record) setTimeout(() => Toon.buzz("win"), 1000);
+      showOverlay(record ? "New Record!" : "Game Over", `이번 점수는 ${score}점이에요. 최고 기록은 ${best}점!`, "Retry", false);
+    }
+
+    playBtn.addEventListener("click", () => (paused ? resume() : start()));
+    quitBtn.addEventListener("click", quit);
+
+    // 다른 탭으로 가면 자동으로 멈춰요
+    document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+
+    const isJump = (k) => k === " " || k === "ArrowUp" || k === "w" || k === "W";
+    const isDuck = (k) => k === "ArrowDown" || k === "s" || k === "S";
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (running) pause();
+        else if (paused) resume();
+        return;
+      }
+      if (running) {
+        if (isJump(e.key)) { e.preventDefault(); if (!e.repeat) jump(); }
+        if (isDuck(e.key)) { e.preventDefault(); cat.duck = true; }
+        return;
+      }
+      if ((e.key === "Enter" || e.key === " ") && !paused && document.activeElement !== playBtn && document.activeElement !== quitBtn) {
+        e.preventDefault();
+        start();
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (isJump(e.key)) jumpHeld = false;
+      if (isDuck(e.key)) cat.duck = false;
+    });
+
+    // 터치 · 클릭: 누르면 점프
+    canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); jump(); });
+    window.addEventListener("pointerup", () => { jumpHeld = false; });
+
+    // 터치 숙이기 버튼: 꾹 누르는 동안 숙이고, 떼면 일어나요
+    const duckOn = (e) => { e.preventDefault(); if (!running) return; cat.duck = true; duckBtn.classList.add("is-down"); };
+    const duckOff = () => { cat.duck = false; duckBtn.classList.remove("is-down"); };
+    duckBtn.addEventListener("pointerdown", duckOn);
+    ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => duckBtn.addEventListener(ev, duckOff));
+    duckBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    // 시작 전에도 장면을 보여줘요 (글꼴이 준비되면 한 번 더)
+    reset();
+    drawScene();
+    Toon.ready(() => { if (!running) drawScene(); });
+  </script>
+</body>
+</html>

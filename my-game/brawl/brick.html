@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ryan-portfolio · brick break (brawl)</title>
+  <!-- 브롤 스타일 글꼴: Lilita One(영문) + Black Han Sans(한글), 내 폴더에 base64로 들어 있어요 -->
+  <link href="../fonts/brawl-fonts.css" rel="stylesheet">
+  <link href="brawl.css" rel="stylesheet">
+  <style>
+    .board { max-width: 720px; }
+    .screen { aspect-ratio: 8 / 7; cursor: none; touch-action: none; }
+
+    /* 점수와 목숨은 화면 위쪽에 */
+    .hud { padding: 2px 2px 10px; flex-wrap: wrap; }
+    .hud .chip.stage { padding-left: 14px; }
+    @media (max-width: 560px) {
+      .hud { gap: 6px; flex-wrap: nowrap; }
+      .hud .chip { gap: 5px; padding: 3px 10px 4px 6px; font-size: 15px; }
+      .hud .chip.stage { padding-left: 10px; }
+      .hud .chip .ico { height: 18px; }
+      .hearts { gap: 2px; }
+      .hearts .ico { height: 20px; }
+    }
+    @media (max-width: 420px) { .hud .lbl { display: none; } }
+
+    /* 시작·일시정지·게임오버 안내는 게임 화면 위에만 */
+    .screen-wrap { position: relative; }
+    .screen-wrap .overlay { inset: 0; aspect-ratio: auto; }
+
+    /* ── 스테이지 클리어 창: 보상 화면처럼 (햇살 · 트로피 · 기울어진 CLEAR!) ── */
+    .clear {
+      position: absolute; inset: 0; z-index: 6;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(4px, 1.4vw, 10px);
+      padding: clamp(10px, 3vw, 22px); overflow: hidden; text-align: center;
+      border-radius: var(--radius);
+      background: radial-gradient(75% 65% at 50% 38%, #3d86ff, var(--sky-lo) 60%, var(--navy));
+      color: var(--milk);
+    }
+    .clear[hidden] { display: none; }
+    .clear > *:not(.rays):not(.confetti) { position: relative; }
+    .clear .rays {
+      position: absolute; top: 34%; left: 50%; width: 1000px; height: 1000px; margin: -500px 0 0 -500px;
+      background: repeating-conic-gradient(rgba(255, 242, 122, 0.22) 0 9deg, transparent 9deg 18deg);
+      animation: spin 14s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .clear h2 {
+      font-size: clamp(34px, 9vw, 64px); line-height: 1; letter-spacing: 0.02em;
+      color: var(--sun); text-shadow: var(--outline-big);
+      transform: rotate(-4deg);
+      animation: pop-in 0.5s cubic-bezier(.2, 1.4, .4, 1) both, wobble 1.6s ease-in-out 0.5s infinite;
+    }
+    @keyframes wobble { 50% { transform: rotate(-1deg) scale(1.04); } }
+    .clear .trophy { width: clamp(48px, 13vw, 96px); height: auto; filter: drop-shadow(0 5px 0 var(--ink)); animation: bob 1.2s ease-in-out infinite; }
+    @keyframes bob { 50% { transform: translateY(-6px) rotate(3deg); } }
+    .stats {
+      display: grid; grid-template-columns: auto auto; gap: 3px 14px;
+      margin: 2px 0 4px; padding: 8px 16px;
+      border: 3px solid var(--ink); border-radius: 14px;
+      background: rgba(11, 29, 94, 0.88); box-shadow: 0 4px 0 var(--ink);
+      font-size: clamp(12px, 3.2vw, 17px);
+    }
+    .stats dt { text-align: right; color: var(--mist); font-family: "Black Han Sans", "Malgun Gothic", sans-serif; }
+    .stats dd { text-align: left; color: var(--sun); font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 var(--ink); }
+    .new-record {
+      display: inline-block; margin-left: 8px; padding: 1px 8px 2px;
+      border: 2px solid var(--ink); border-radius: 999px;
+      background: var(--berry); color: var(--milk); font-size: 0.72em; letter-spacing: 0.06em;
+      text-shadow: var(--outline); transform: rotate(-4deg);
+    }
+    .new-record[hidden] { display: none; }
+    .clear .actions { margin-top: 2px; gap: clamp(8px, 2vw, 14px); }
+    .clear .confetti {
+      position: absolute; top: -14px; width: 9px; height: 13px; border: 2px solid var(--ink); border-radius: 3px;
+      animation: fall 2.2s linear infinite;
+    }
+    @keyframes fall { to { transform: translateY(560px) rotate(540deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .clear .rays, .clear .trophy, .clear h2 { animation: none; }
+      .clear .confetti { display: none; }
+    }
+    @media (max-width: 560px) {
+      .clear .btn, .clear .btn-ghost { min-height: 40px; padding: 5px 12px 7px; font-size: 15px; border-radius: 12px; }
+      .clear .stats { padding: 5px 12px; }
+    }
+
+    /* 미리보기 모드 막대 (brick-if-*.html 에서 열었을 때만) */
+    .preview-bar {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+      margin: 6px 0 4px; padding: 8px 10px 8px 16px;
+      border: var(--line) solid var(--ink); border-radius: 16px;
+      background: linear-gradient(to bottom, var(--sun-hi), var(--sun) 50%, var(--sun-lo));
+      box-shadow: 0 5px 0 var(--ink);
+      color: var(--ink);
+    }
+    .preview-bar[hidden] { display: none; }
+    .preview-label { font-size: 16px; letter-spacing: 0.03em; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="arcade.html" id="backLink" aria-label="아케이드로 돌아가기"><span data-icon="back"></span><span class="label">Back</span></a>
+      <div class="top-right">
+        <span class="hi"><span data-icon="trophy"></span>HI <span id="best">000000</span></span>
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <!-- 미리보기 모드 막대 (?preview=clear · items · stage2 로 열었을 때만 보여요) -->
+    <div class="preview-bar" id="previewBar" hidden>
+      <span class="preview-label">PREVIEW · <span id="previewName"></span></span>
+      <button class="btn-ghost" id="previewBtn" type="button">다시 보기</button>
+    </div>
+
+    <h1 class="band">BRICK</h1>
+    <p class="how">패들로 공을 튕겨서 알록달록한 벽돌을 모두 깨요.<br><span class="desk-only">방향키 · A/D 또는 마우스로 움직이고, 공 위 화살표가 흔들릴 때 Space · 클릭으로 원하는 각도에 쏴요. ESC로 잠시 멈춰요.</span><span class="touch-only">화면을 끌어서 패들을 움직이고, 화살표가 원하는 쪽을 가리킬 때 톡 눌러 쏴요.</span></p>
+
+    <main class="board">
+      <div class="hud">
+        <span class="chip"><span data-icon="star"></span><span class="lbl">Score</span> <span class="num" id="score">000000</span></span>
+        <span class="chip stage">Stage <span class="num" id="stage">1</span></span>
+        <span class="hearts" id="lives" aria-label="남은 목숨"></span>
+      </div>
+      <div class="screen-wrap">
+        <canvas class="screen" id="game" width="256" height="224" aria-label="벽돌깨기 게임 화면"></canvas>
+        <div class="overlay" id="overlay">
+          <h2 id="overlayTitle">Brick Break</h2>
+          <p id="overlayText">벽돌을 모두 깨면 다음 스테이지! 공을 놓치면 목숨이 하나 줄어요.</p>
+          <div class="actions">
+            <button class="btn-ghost" id="quitBtn" type="button" hidden>Quit</button>
+            <button class="btn" id="playBtn" type="button">Play</button>
+          </div>
+          <p class="press blink desk-only" id="press">PRESS ENTER</p>
+        </div>
+
+        <!-- 스테이지 클리어 창 -->
+        <div class="clear" id="clearWin" role="dialog" aria-labelledby="clearTag" hidden>
+          <span class="rays" aria-hidden="true"></span>
+          <h2 id="clearTag">CLEAR!</h2>
+          <span id="clearTrophy"></span>
+          <dl class="stats">
+            <dt>걸린 시간</dt><dd><span id="clearTime">0.0초</span><span class="new-record" id="newRecord" hidden>NEW RECORD</span></dd>
+            <dt>최고 시간</dt><dd id="clearBest">-</dd>
+            <dt>스테이지 점수</dt><dd id="clearScore">+0</dd>
+            <dt>남은 하트</dt><dd id="clearLives">3</dd>
+          </dl>
+          <div class="actions">
+            <button class="btn-ghost" id="clearQuit" type="button">그만하기</button>
+            <button class="btn grape" id="clearRetry" type="button">다시 하기</button>
+            <button class="btn go" id="clearNext" type="button">계속하기</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../retro.js"></script>
+  <script src="toon.js"></script>
+  <script>
+    Toon.icons();
+    Toon.mountMute(document.getElementById("soundBtn"));
+
+    // 뒤로 가기: arcade.html에서 왔다면 브라우저 기록으로 되돌아가요
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /arcade\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    // ── 화면: 게임 좌표는 256×224 그대로, 그림은 3배로 선명하게 그려요 ──
+    const canvas = document.getElementById("game");
+    const W = 256, H = 224;
+    const ctx = Toon.setup(canvas, W, H, 3);
+    const C = Toon.C;
+    const WALL = 3, TOP = 15; // 양옆 벽 두께, 위쪽 벽 아래 끝
+
+    const scoreEl = document.getElementById("score");
+    const stageEl = document.getElementById("stage");
+    const livesEl = document.getElementById("lives");
+    const bestEl = document.getElementById("best");
+    const overlay = document.getElementById("overlay");
+    const overlayTitle = document.getElementById("overlayTitle");
+    const overlayText = document.getElementById("overlayText");
+    const pressEl = document.getElementById("press");
+    const playBtn = document.getElementById("playBtn");
+    const quitBtn = document.getElementById("quitBtn");
+
+    let best = 0;
+    try { best = Number(localStorage.getItem("brick-best")) || 0; } catch (e) {}
+    bestEl.textContent = Retro.pad(best);
+
+    // ── 벽돌: 5줄 × 8칸. 위 줄일수록 점수가 높아요 (사탕 색) ──
+    const COLS = 8, ROWS = 5;
+    const BW = 28, BH = 10, GAP = 2;
+    const BX = Math.floor((W - (COLS * (BW + GAP) - GAP)) / 2), BY = 26;
+    const ROW_COLORS = [
+      { face: C.berry, hi: C.berryHi, pts: 50 },
+      { face: C.cat, hi: C.catHi, pts: 40 },
+      { face: C.sun, hi: C.sunHi, pts: 30 },
+      { face: C.grapeHi, hi: "#e4d6ff", pts: 20 },
+      { face: C.grape, hi: C.grapeHi, pts: 10 },
+    ];
+
+    const paddle = { x: W / 2 - 20, w: 40, h: 6, y: H - 22, speed: 3.6, target: null };
+    let balls = []; // 공 여러 개 (쌍둥이 고양이를 받으면 두 배로), balls[0]이 패들 위에서 기다리는 공
+    const MAX_BALLS = 8;
+    const keys = { left: false, right: false };
+    let bricks = [], bits = [], items = [], pops = [], score = 0, lives = 3, stage = 1, speed = 2.2;
+    // 떨어지는 아이템: 좋은 고양이 = 패들을 받은 순간 길이에서 15% 길게, 나쁜 고양이 = 15% 짧게
+    const ITEM = { bad: 0.035, good: 0.03, lazy: 0.02, twin: 0.015, gold: 0.0125, weird: 0.01, heart: 0.0075, fall: 1.1, minW: 20, maxW: 80 }; // 확률(벽돌 1개당, 큰 순서: 빨강 > 초록 > 졸린 > 쌍둥이 > 황금 > 이상한 > 하트), 떨어지는 속도, 패들 길이 범위
+    const IS_PREVIEW = new URLSearchParams(location.search).has("preview");
+    const PREVIEW_KEY = new URLSearchParams(location.search).get("preview"); // clear · items · stage2
+    // 캡슐 빈도: 처음엔 기본 확률의 절반(×0.5)에서 시작해, 이번 게임에서 깬 벽돌 수에 따라 기하급수적으로 늘어요
+    //  배율 = start × 2^(깬 벽돌 ÷ double) → 벽돌 60개마다 두 배, 최대 ×3.6
+    const DROP = { start: 0.5, double: 60, max: 3.6 };
+    // 공 가속: 벽돌 1개마다 + brick, 스테이지마다 시작 속도 + stage, 최고 4.2
+    const SPEED_UP = { brick: 0.021, stage: 0.21 };
+    let broken = 0, stageStartBroken = 0; // 이번 게임에서 깬 벽돌 수, 다시 하기용 스테이지 시작 값
+    const EFFECT = { pierce: 360, slow: 300, slowKey: 0.3, slowMouse: 0.05, spin: 300 }; // 황금 고양이: 6초 동안 관통 / 졸린 고양이: 5초 동안 패들 느림 / 이상한 고양이: 5초 동안 화면 회전 (60프레임 = 1초)
+    let pierce = 0, slow = 0, spin = 0, spinDeg = 0; // 남은 효과 시간(프레임), 지금 돌아간 화면 각도
+    let stageMs = 0, stageStartScore = 0, stageStartLives = 3, clearOpen = false; // 스테이지 걸린 시간, 다시 하기용 시작 점수·하트
+    let running = false, paused = false, last = 0, tick = 0, shake = 0, clearing = 0;
+    let lastBump = -99; // 패들 진동이 너무 잦지 않게
+
+    // 하트 칸: 기본 3칸, 하트 고양이로 3개보다 많아지면 그만큼 늘어나요 (최대 MAX_LIVES)
+    const MAX_LIVES = 5;
+    function hearts() {
+      livesEl.innerHTML = Array.from({ length: Math.max(3, lives) }, (_, i) => i).map((i) => `<span class="${i < lives ? "on" : "off"}">${Toon.icon("heart")}</span>`).join("");
+      livesEl.setAttribute("aria-label", `남은 목숨 ${lives}개`);
+    }
+
+    // ── 스테이지별 벽돌 배치 ──
+    // 그림의 글자 = 벽돌 색(ROW_COLORS 번호: 0 빨강 · 1 주황 · 2 노랑 · 3 연보라 · 4 보라), . = 빈칸
+    // 정해진 그림이 없는 스테이지는 기본 배치(5줄 × 8칸, 40개)
+    const LAYOUTS = {
+      2: [ // 고양이 얼굴 44개: 귀 · 눈(빈칸 2) · 코와 입(빈칸 2) · 턱
+        "00....00",
+        "111..111",
+        "11111111",
+        "2.2222.2",
+        "11111111",
+        "222..222",
+        ".222222.",
+      ],
+    };
+
+    // b.row = 벽돌 색과 점수를 정하는 번호
+    function buildBricks() {
+      bricks = [];
+      const map = LAYOUTS[stage];
+      if (map) {
+        map.forEach((line, r) => [...line].forEach((ch, c) => {
+          if (ch !== ".") bricks.push({ x: BX + c * (BW + GAP), y: BY + r * (BH + GAP), row: Number(ch), alive: true });
+        }));
+        return;
+      }
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          bricks.push({ x: BX + c * (BW + GAP), y: BY + r * (BH + GAP), row: r, alive: true });
+    }
+
+    // 공을 패들 위에 올려 두기 (Space · 클릭으로 발사)
+    function stickBall() {
+      balls = [{ x: paddle.x + paddle.w / 2, y: paddle.y - 3, vx: 0, vy: 0, r: 2, stuck: true }];
+      aimT = 0; // 조준은 항상 똑바로 위에서 시작
+    }
+
+    // 발사 각도 조준: 공 위의 화살표가 왼쪽 끝 ↔ 오른쪽 끝을 오가고, 쏘는 순간의 각도로 날아가요
+    //  max = 똑바로 위에서 기울어지는 최대 각도, period = 한 번 왕복하는 데 걸리는 프레임 (60프레임 = 1초)
+    const AIM = { max: 60, period: 150 };
+    let aimT = 0;
+    const aimDeg = () => AIM.max * Math.sin(2 * Math.PI * aimT / AIM.period);
+
+    function launch() {
+      const ball = balls[0];
+      if (!running || !ball || !ball.stuck) return;
+      ball.stuck = false;
+      const ang = aimDeg() * Math.PI / 180; // 0 = 똑바로 위, - = 왼쪽, + = 오른쪽
+      ball.vx = Math.sin(ang) * speed;
+      ball.vy = -Math.cos(ang) * speed;
+      Retro.sfx("jump");
+    }
+
+    function reset() {
+      score = 0; lives = 3; stage = 1; speed = 2.2; bits = []; items = []; pops = []; shake = 0; clearing = 0; pierce = 0; slow = 0; setSpin(0);
+      stageMs = 0; stageStartScore = 0; stageStartLives = 3; broken = 0; stageStartBroken = 0;
+      paddle.w = 40;
+      paddle.x = W / 2 - paddle.w / 2;
+      buildBricks();
+      stickBall();
+      scoreEl.textContent = Retro.pad(0);
+      stageEl.textContent = stage;
+      hearts();
+    }
+
+    function addScore(n) {
+      score += n;
+      scoreEl.textContent = Retro.pad(score);
+    }
+
+    // 벽돌이 깨질 때 사탕 조각이 튀어요
+    function burst(b) {
+      const col = ROW_COLORS[b.row];
+      for (let i = 0; i < 8; i++) {
+        bits.push({ x: b.x + Math.random() * BW, y: b.y + Math.random() * BH, vx: (Math.random() - 0.5) * 2.4, vy: -Math.random() * 1.6, life: 24, col: i % 2 ? col.face : col.hi, rot: Math.random() * 6, kind: "chip" });
+      }
+    }
+
+    // ── 한 프레임 ──
+    function update(step) {
+      tick++;
+
+      // 패들: 키보드 또는 마우스 위치를 따라가요
+      // 졸린 고양이 효과: 키보드 30% 속도, 마우스·터치는 따라가는 빠르기 12.5% (0.4 → 0.05)
+      const lazy = slow > 0 ? EFFECT.slowKey : 1;
+      if (keys.left) paddle.x -= paddle.speed * lazy * step;
+      if (keys.right) paddle.x += paddle.speed * lazy * step;
+      if (paddle.target !== null) paddle.x += (paddle.target - paddle.w / 2 - paddle.x) * Math.min(1, (slow > 0 ? EFFECT.slowMouse : 0.4) * step);
+      paddle.x = Math.max(WALL, Math.min(W - WALL - paddle.w, paddle.x));
+
+      bits.forEach((p) => { p.x += p.vx * step; p.y += p.vy * step; p.vy += 0.12 * step; p.life -= step; if (p.rot !== undefined) p.rot += 0.2 * step; });
+      if (clearing <= 0) stageMs += step * 16.67;
+      updateItems(step);
+      if (slow > 0) slow -= step;
+      if (spin > 0) { spin -= step; if (spin <= 0) setSpin(0); }
+      if (pierce > 0) {
+        pierce -= step;
+        balls.forEach((b) => { if (!b.stuck) bits.push({ x: b.x, y: b.y, vx: 0, vy: 0, life: 10, col: tick % 2 ? C.sunHi : C.sun, kind: "trail" }); });
+      }
+      bits = bits.filter((p) => p.life > 0);
+      if (shake > 0) shake -= step;
+
+      // 스테이지 클리어 연출 중에는 공이 멈춰요
+      if (clearing > 0) {
+        clearing -= step;
+        if (clearing <= 0) stageClear();
+        return;
+      }
+
+      const first = balls[0];
+      if (first.stuck) {
+        first.x = paddle.x + paddle.w / 2;
+        first.y = paddle.y - first.r - 1;
+        aimT += step; // 조준 화살표가 좌우로 흔들려요
+        return;
+      }
+
+      // 공을 작은 걸음으로 나눠 움직여서 빠를 때도 벽돌을 뚫고 지나가지 않게
+      for (const ball of balls) {
+        const n = Math.ceil(Math.max(Math.abs(ball.vx), Math.abs(ball.vy)) * step / 1.5);
+        for (let i = 0; i < n; i++) {
+          if (moveBall(ball, step / n)) { ball.out = true; break; }
+        }
+      }
+      // 떨어진 공은 사라지고, 공이 하나도 안 남으면 목숨이 줄어요
+      balls = balls.filter((b) => !b.out);
+      if (!balls.length) {
+        if (clearing > 0) stickBall();
+        else loseLife();
+      }
+    }
+
+    function loseLife() {
+      lives--;
+      hearts();
+      shake = 14;
+      Retro.sfx("hit");
+      Toon.buzz("hit"); // 목숨 감소: 강한 진동
+      if (lives <= 0) { gameOver(); return; }
+      pierce = 0; slow = 0; setSpin(0);
+      stickBall();
+    }
+
+    function moveBall(ball, s) {
+      ball.x += ball.vx * s;
+      ball.y += ball.vy * s;
+
+      // 벽
+      if (ball.x - ball.r < WALL) { ball.x = WALL + ball.r; ball.vx = Math.abs(ball.vx); Retro.sfx("select"); }
+      if (ball.x + ball.r > W - WALL) { ball.x = W - WALL - ball.r; ball.vx = -Math.abs(ball.vx); Retro.sfx("select"); }
+      if (ball.y - ball.r < TOP) { ball.y = TOP + ball.r; ball.vy = Math.abs(ball.vy); Retro.sfx("select"); }
+
+      // 패들: 맞은 위치에 따라 튕기는 각도가 달라져요 (가운데 = 위로, 끝 = 옆으로)
+      if (ball.vy > 0 && ball.y + ball.r >= paddle.y && ball.y + ball.r <= paddle.y + paddle.h + 2 &&
+          ball.x >= paddle.x - ball.r && ball.x <= paddle.x + paddle.w + ball.r) {
+        const hit = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2); // -1 ~ 1
+        const ang = Math.max(-1, Math.min(1, hit)) * 60 * Math.PI / 180;
+        ball.vx = Math.sin(ang) * speed;
+        ball.vy = -Math.cos(ang) * speed;
+        ball.y = paddle.y - ball.r;
+        Retro.sfx("rotate");
+        paddle.squash = 8; // 패들이 살짝 눌렸다 펴져요
+        if (tick - lastBump > 20) { Toon.buzz("bump"); lastBump = tick; } // 가벼운 진동 (너무 자주 울리지 않게)
+      }
+
+      // 황금 고양이 효과: 공이 닿는 벽돌을 모두 부수고, 튕기지 않고 그대로 지나가요
+      if (pierce > 0) {
+        for (const b of bricks) {
+          if (!b.alive) continue;
+          if (ball.x + ball.r < b.x || ball.x - ball.r > b.x + BW || ball.y + ball.r < b.y || ball.y - ball.r > b.y + BH) continue;
+          b.alive = false;
+          addScore(ROW_COLORS[b.row].pts);
+          burst(b);
+          dropItem(b);
+          Retro.sfx("place");
+        }
+        if (!clearing && bricks.every((x) => !x.alive)) { clearing = 50; Retro.sfx("clear"); }
+      }
+
+      // 벽돌: 한 번에 하나만 깨요
+      //  1) 공과 겹친 벽돌 중 가장 많이 겹친 하나만 고르고
+      //  2) 공이 직전에 있던 쪽(위·아래·왼쪽·오른쪽)으로 튕길 면을 정해
+      //  3) 방향을 "벽돌에서 멀어지는 쪽"으로 고정하고, 공을 벽돌 밖으로 빼내요
+      let hit = null, most = 0;
+      if (pierce > 0) hit = null; else
+      for (const b of bricks) {
+        if (!b.alive) continue;
+        const ox = Math.min(ball.x + ball.r, b.x + BW) - Math.max(ball.x - ball.r, b.x);
+        const oy = Math.min(ball.y + ball.r, b.y + BH) - Math.max(ball.y - ball.r, b.y);
+        if (ox <= 0 || oy <= 0) continue;
+        if (ox * oy > most) { most = ox * oy; hit = b; }
+      }
+      if (hit) {
+        const b = hit;
+        const px = ball.x - ball.vx * s, py = ball.y - ball.vy * s; // 이번 걸음 직전 위치
+        const fromAbove = py + ball.r <= b.y, fromBelow = py - ball.r >= b.y + BH;
+        const fromLeft = px + ball.r <= b.x, fromRight = px - ball.r >= b.x + BW;
+        let vertical;
+        if (fromAbove || fromBelow) vertical = true;
+        else if (fromLeft || fromRight) vertical = false;
+        else {
+          // 이미 겹쳐 있던 드문 경우: 덜 겹친 쪽으로
+          const ox = Math.min(ball.x + ball.r - b.x, b.x + BW - (ball.x - ball.r));
+          const oy = Math.min(ball.y + ball.r - b.y, b.y + BH - (ball.y - ball.r));
+          vertical = oy <= ox;
+        }
+        if (vertical) {
+          if (ball.y < b.y + BH / 2) { ball.y = b.y - ball.r; ball.vy = -Math.abs(ball.vy); }
+          else { ball.y = b.y + BH + ball.r; ball.vy = Math.abs(ball.vy); }
+        } else {
+          if (ball.x < b.x + BW / 2) { ball.x = b.x - ball.r; ball.vx = -Math.abs(ball.vx); }
+          else { ball.x = b.x + BW + ball.r; ball.vx = Math.abs(ball.vx); }
+        }
+        b.alive = false;
+        addScore(ROW_COLORS[b.row].pts);
+        burst(b);
+        dropItem(b);
+        Retro.sfx("place");
+        // 벽돌을 깰수록 공이 조금씩 빨라져요
+        speed = Math.min(4.2, speed + SPEED_UP.brick);
+        const len = Math.hypot(ball.vx, ball.vy);
+        ball.vx = ball.vx / len * speed;
+        ball.vy = ball.vy / len * speed;
+        if (bricks.every((x) => !x.alive)) { clearing = 50; Retro.sfx("clear"); }
+      }
+
+      // 공이 바닥으로 떨어졌어요
+      return ball.y - ball.r > H;
+    }
+
+    // 이상한 고양이: 게임 화면을 90 · 180 · 270도 중 하나로 돌려요 (셋 다 1/3씩 공평하게)
+    //  사이 애니메이션 없이 바로 돌아가요. 90 · 270도일 때는 세로로 길어진 화면이 판 안에 들어가게 224/256 = 0.875배로 줄여요
+    const SPIN_ANGLES = [90, 180, 270];
+    function setSpin(deg) {
+      spinDeg = deg;
+      if (!deg) spin = 0;
+      canvas.style.rotate = deg ? `${deg}deg` : "";
+      canvas.style.scale = deg % 180 ? String(H / W) : "";
+    }
+
+    // 쌍둥이 고양이: 지금 있는 공마다 거울처럼 반대쪽으로 하나씩 더 (최대 MAX_BALLS개)
+    function doubleBalls() {
+      if (balls[0].stuck) launch(); // 패들 위에서 기다리던 공은 먼저 쏴요
+      const twins = [];
+      for (const b of balls) {
+        if (balls.length + twins.length >= MAX_BALLS) break;
+        const len = Math.hypot(b.vx, b.vy) || speed;
+        // 거의 똑바로 날던 공은 쌍둥이를 비스듬히 보내서 두 공이 겹치지 않게
+        const vx = Math.abs(b.vx) < len * 0.25 ? (b.vx >= 0 ? -0.5 : 0.5) * len : -b.vx;
+        const vy = (b.vy < 0 ? -1 : 1) * Math.sqrt(Math.max(0, len * len - vx * vx));
+        twins.push({ x: b.x, y: b.y, vx, vy, r: b.r, stuck: false });
+      }
+      balls.push(...twins);
+    }
+
+    // ── 아이템: 벽돌이 깨질 때 낮은 확률로 떨어져요 ──
+    function dropItem(b) {
+      if (b.item) { items.push({ kind: b.item, x: b.x + BW / 2 - 6, y: b.y + BH / 2 - 5, w: 12, h: 10, t: 0 }); return; } // 데모 모드
+      const r = Math.random();
+      let acc = 0, kind = null;
+      // 게임이 진행될수록(깬 벽돌이 많을수록) 7가지 고양이 모두 기하급수적으로 더 자주 떨어져요
+      broken++;
+      const boost = Math.min(DROP.max, DROP.start * 2 ** (broken / DROP.double));
+      for (const k of ["gold", "lazy", "twin", "weird", "heart", "good", "bad"]) { acc += ITEM[k] * boost; if (r < acc) { kind = k; break; } }
+      if (kind) items.push({ kind, x: b.x + BW / 2 - 6, y: b.y + BH / 2 - 5, w: 12, h: 10, t: 0 });
+    }
+
+    function updateItems(step) {
+      for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i];
+        it.y += ITEM.fall * step;
+        it.t += step;
+        // 패들이 받았어요
+        if (it.y + it.h >= paddle.y && it.y <= paddle.y + paddle.h && it.x + it.w >= paddle.x && it.x <= paddle.x + paddle.w) {
+          catchItem(it.kind);
+          items.splice(i, 1);
+        } else if (it.y > H) {
+          items.splice(i, 1); // 놓친 아이템은 사라져요
+        }
+      }
+      pops.forEach((p) => {
+        if (p.delay > 0) { p.delay -= step; return; }
+        if (p.sway !== undefined) { p.sway += step; p.x += 0.12 * step; p.y -= 0.25 * step; } // ZZ는 느릿느릿 오른쪽 위로
+        else p.y -= 0.4 * step;
+        p.life -= step;
+      });
+      pops = pops.filter((p) => p.life > 0);
+      if (paddle.squash > 0) paddle.squash -= step;
+    }
+
+    // 패들 길이 바꾸기: 가운데를 기준으로 늘이고 줄여요
+    function resizePaddle(f) {
+      const mid = paddle.x + paddle.w / 2;
+      paddle.w = Math.round(Math.max(ITEM.minW, Math.min(ITEM.maxW, paddle.w * f)));
+      paddle.x = Math.max(WALL, Math.min(W - WALL - paddle.w, mid - paddle.w / 2));
+    }
+
+    // ── 캡슐 고양이: 동그란 배지 안에 만화 고양이 얼굴 ──
+    //  good 초록 웃음 · bad 빨강 화남 · gold 노랑 반짝 · lazy 보라 졸림 · twin 두 얼굴 · weird 무지개 어지러움 · heart 분홍 하트 눈
+    const RAINBOW = [C.cat, C.grapeHi, C.berry, C.sun, C.leaf, C.skyHi]; // 이상한 고양이와 남은 시간 막대의 색 순서
+    const PINK = "#ffb3c7"; // 하트 고양이 몸 색
+    const CATS = {
+      good: { coat: C.leaf, mood: "grin" },
+      bad: { coat: C.berry, mood: "angry" },
+      gold: { coat: C.sun, mood: "wow" },
+      lazy: { coat: C.grape, mood: "sleepy" },
+      twin: { coat: C.cream, mood: "happy" },
+      weird: { coat: C.cat, mood: "dizzy" },
+      heart: { coat: PINK, mood: "love" },
+    };
+
+    function drawItem(it) {
+      const cat = CATS[it.kind];
+      const cx = it.x + 6, cy = it.y + 5;
+      const coat = it.kind === "weird" ? RAINBOW[Math.floor(it.t / 6) % RAINBOW.length] : cat.coat;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.sin(it.t / 9) * 0.14); // 흔들흔들 떨어져요
+      // 배지: 털 색의 밝은 동그라미 + 굵은 외곽선
+      Toon.ball(ctx, 0, 0, 7.4, Toon.tint(coat, 0.55), { line: 1, shine: false, shade: 0.12 });
+      if (it.kind === "twin") {
+        Toon.cat(ctx, 2.6, -1.4, 8.6, { coat: C.grapeHi, mood: "happy", line: 0.6, blush: false });
+        Toon.cat(ctx, -1.4, 1.4, 9.4, { coat: C.cream, mood: "grin", line: 0.65 });
+      } else {
+        Toon.cat(ctx, 0, 0.9, 11, { coat, mood: cat.mood, t: it.t, line: 0.7 });
+      }
+      ctx.restore();
+      // 황금 고양이는 주변에 반짝이 별
+      if (it.kind === "gold" && Math.floor(it.t / 6) % 2) {
+        Toon.star(ctx, cx - 9, cy - 4, 2.2, C.sunHi, { line: 0.5 });
+        Toon.star(ctx, cx + 9, cy + 3, 1.8, C.milk, { line: 0.5 });
+      }
+      // 졸린 고양이는 작은 z
+      if (it.kind === "lazy") Toon.text(ctx, "z", cx + 8, cy - 7 - Math.sin(it.t / 10) * 1.5, { size: 5, color: C.grapeHi, line: 1.2, drop: 0.5 });
+      // 이상한 고양이는 머리 위로 별 2개가 빙글빙글 (어지러워요)
+      if (it.kind === "weird") {
+        const a = it.t / 7;
+        [0, Math.PI].forEach((o, i) => {
+          Toon.star(ctx, cx + Math.cos(a + o) * 8, cy - 8 + Math.sin(a + o) * 2, 1.9, i ? C.milk : C.sun, { line: 0.5 });
+        });
+      }
+    }
+
+    // 받았을 때 효과
+    function catchItem(kind) {
+      const mid = paddle.x + paddle.w / 2;
+      const pop = (text, color) => pops.push({ x: mid, y: paddle.y - 10, text, color, life: 40, life0: 40 });
+      // 졸린 ZZ: 작은 Z, 큰 Z가 차례로 흔들흔들 천천히 떠올라요
+      const zz = (x) => {
+        pops.push({ x: x - 3, y: paddle.y - 8, text: "Z", color: C.grapeHi, life: 70, life0: 70, s: 1, sway: 0 });
+        pops.push({ x: x + 5, y: paddle.y - 12, text: "Z", color: C.grapeHi, life: 70, life0: 70, s: 2, sway: 0, delay: 14 });
+      };
+      if (kind === "good") { resizePaddle(1.15); pop("+", C.leaf); Retro.sfx("coin"); Toon.buzz("pick"); }
+      if (kind === "bad") { resizePaddle(0.85); pop("-", C.berry); Retro.sfx("error"); Toon.buzz("bump"); }
+      if (kind === "gold") { pierce = EFFECT.pierce; pop("!", C.sun); Retro.sfx("hype"); Toon.buzz("good"); }   // 잠시 동안 벽돌을 뚫고 지나가요
+      if (kind === "lazy") { slow = EFFECT.slow; zz(mid); Retro.sfx("pause"); Toon.buzz("pick"); }             // 잠시 동안 패들이 느려져요 (졸린 ZZ)
+      if (kind === "weird") {                                                                                  // 잠시 동안 화면이 돌아가요
+        setSpin(SPIN_ANGLES[Math.floor(Math.random() * SPIN_ANGLES.length)]);
+        spin = EFFECT.spin;
+        pop("?", C.grapeHi); Retro.sfx("almost"); Toon.buzz("hit");
+      }
+      if (kind === "twin") { doubleBalls(); pop("x2", C.milk); Retro.sfx("coin"); Toon.buzz("good"); }        // 공이 두 배로
+      if (kind === "heart") {                                                                                  // 하트 +1 (최대 MAX_LIVES개)
+        if (lives < MAX_LIVES) { lives++; hearts(); }
+        pops.push({ x: mid, y: paddle.y - 10, heart: true, life: 40, life0: 40 });
+        Retro.sfx("milestone"); Toon.buzz("good");
+      }
+    }
+
+    // ── 스테이지 클리어 창 ──
+    const clearWin = document.getElementById("clearWin");
+    const fmtTime = (ms) => {
+      const sec = ms / 1000;
+      return sec < 60 ? `${sec.toFixed(1)}초` : `${Math.floor(sec / 60)}분 ${(sec % 60).toFixed(1)}초`;
+    };
+
+    function stageClear() {
+      running = false;
+      unlockPointer(); // 클리어 창 버튼을 누를 수 있게 커서를 풀어요
+      canvas.style.transform = "";
+      setSpin(0);
+      drawScene();
+      // 스테이지별 최고 시간 (짧을수록 좋아요)
+      let times = {};
+      try { times = JSON.parse(localStorage.getItem("brick-times") || "{}"); } catch (e) {}
+      const prev = times[stage];
+      const isNew = !IS_PREVIEW && (!prev || stageMs < prev); // 미리보기에서는 기록하지 않아요
+      if (isNew) { times[stage] = Math.round(stageMs); try { localStorage.setItem("brick-times", JSON.stringify(times)); } catch (e) {} }
+      document.getElementById("clearTag").textContent = "CLEAR!";
+      document.getElementById("clearTrophy").innerHTML = Toon.icon("trophy", "trophy");
+      document.getElementById("clearTime").textContent = fmtTime(stageMs);
+      document.getElementById("newRecord").hidden = !isNew;
+      document.getElementById("clearBest").textContent = fmtTime(isNew ? stageMs : prev || stageMs);
+      document.getElementById("clearScore").textContent = `+${score - stageStartScore}`;
+      document.getElementById("clearLives").textContent = `${lives} / ${Math.max(3, lives)}`;
+      // 사탕 색종이
+      clearWin.querySelectorAll(".confetti").forEach((c) => c.remove());
+      const colors = [C.sun, C.berry, C.leaf, C.grapeHi, C.cat, C.milk, C.skyHi];
+      for (let i = 0; i < 24; i++) {
+        const c = document.createElement("span");
+        c.className = "confetti";
+        c.style.left = Math.round(Math.random() * 98) + "%";
+        c.style.background = colors[i % colors.length];
+        c.style.animationDelay = (Math.random() * 2.2).toFixed(2) + "s";
+        c.style.animationDuration = (1.8 + Math.random() * 1.2).toFixed(2) + "s";
+        clearWin.prepend(c);
+      }
+      clearWin.hidden = false;
+      clearOpen = true;
+      Retro.sfx("milestone");
+      Toon.buzz("win"); // 스테이지 클리어: 신나는 진동
+      document.getElementById("clearNext").focus();
+    }
+
+    function closeClear() {
+      clearWin.hidden = true;
+      clearOpen = false;
+      running = true;
+      lockPointer();
+      last = 0;
+      requestAnimationFrame(frame);
+    }
+
+    // 계속하기: 다음 스테이지로
+    const demoAgain = () => { clearWin.hidden = true; clearOpen = false; running = false; runItemsDemo(); }; // 고양이 데모에서는 데모를 다시
+    document.getElementById("clearNext").addEventListener("click", () => { if (PREVIEW_KEY === "items") return demoAgain(); nextStage(); closeClear(); });
+    // 다시 하기: 이 스테이지를 처음부터 (점수와 하트는 스테이지 시작 때로)
+    document.getElementById("clearRetry").addEventListener("click", () => {
+      if (PREVIEW_KEY === "items") return demoAgain();
+      score = stageStartScore; scoreEl.textContent = Retro.pad(score);
+      lives = stageStartLives; hearts();
+      broken = stageStartBroken;
+      speed = Math.min(4.2, 2.2 + (stage - 1) * SPEED_UP.stage);
+      buildBricks();
+      items = []; pierce = 0; slow = 0; setSpin(0); stageMs = 0;
+      stickBall();
+      Retro.sfx("start");
+      closeClear();
+    });
+    // 그만하기: 첫 화면으로
+    document.getElementById("clearQuit").addEventListener("click", () => {
+      clearWin.hidden = true;
+      clearOpen = false;
+      quit();
+    });
+
+    function nextStage() {
+      stage++;
+      stageEl.textContent = stage;
+      speed = Math.min(4.2, 2.2 + (stage - 1) * SPEED_UP.stage); // 스테이지마다 조금 더 빠르게
+      buildBricks();
+      items = []; pierce = 0; slow = 0; setSpin(0);
+      stageMs = 0; stageStartScore = score; stageStartLives = lives; stageStartBroken = broken;
+      stickBall();
+      Retro.sfx("start");
+    }
+
+    // ── 그리기 (만화풍: 굵은 외곽선 + 아래 그림자 + 위 반짝이) ──
+    function drawBrick(b) {
+      const col = ROW_COLORS[b.row];
+      Toon.box(ctx, b.x, b.y, BW, BH, 3, col.face, { line: 0.9, drop: 1.4, shade: 0.24, gloss: 0.6 });
+    }
+
+    // 남은 효과 시간 막대 (둥근 알약)
+    function timerBar(x, frac, color) {
+      Toon.box(ctx, x, 3, 62, 7, 3.5, C.navy, { line: 0.9, gloss: 0, shade: 0 });
+      const w = Math.max(5, 60 * frac);
+      Toon.box(ctx, x + 1, 4, w, 5, 2.5, color, { line: 0, gloss: 0.55, shade: 0.2 });
+    }
+
+    function drawScene() {
+      // 배경: 햇살이 천천히 도는 파란 하늘
+      Toon.sky(ctx, W, H, { top: "#4a92ff", bottom: "#1447c4", rays: 16, spin: tick * 0.0015, cy: -30, ray: "rgba(255,255,255,0.08)" });
+      // 바닥 쪽은 조금 더 진하게
+      const fade = ctx.createLinearGradient(0, 120, 0, H);
+      fade.addColorStop(0, "rgba(11,29,94,0)"); fade.addColorStop(1, "rgba(11,29,94,0.45)");
+      ctx.fillStyle = fade; ctx.fillRect(0, 120, W, H - 120);
+
+      // 위쪽 띠 (효과 막대 자리) + 양옆 벽
+      ctx.fillStyle = C.navy; ctx.fillRect(0, 0, W, 12);
+      ctx.fillStyle = C.grape;
+      ctx.fillRect(0, 12, WALL, H - 12); ctx.fillRect(W - WALL, 12, WALL, H - 12); ctx.fillRect(0, 12, W, 3);
+      ctx.fillStyle = C.grapeHi; ctx.fillRect(0, 12, W, 1);
+      ctx.strokeStyle = C.ink; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(WALL, H); ctx.lineTo(WALL, TOP); ctx.lineTo(W - WALL, TOP); ctx.lineTo(W - WALL, H);
+      ctx.moveTo(0, 12); ctx.lineTo(W, 12);
+      ctx.stroke();
+
+      bricks.forEach((b) => b.alive && drawBrick(b));
+      // 조각: 사탕 조각은 빙글빙글, 황금 꼬리는 동그랗게 사라져요
+      bits.forEach((p) => {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 10));
+        if (p.kind === "trail") {
+          ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, 1 + p.life * 0.12, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.translate(p.x, p.y); ctx.rotate(p.rot || 0);
+          ctx.fillStyle = p.col; ctx.strokeStyle = C.ink; ctx.lineWidth = 0.5;
+          Toon.rr(ctx, -1.3, -1.3, 2.6, 2.6, 0.8); ctx.fill(); ctx.stroke();
+        }
+        ctx.restore();
+      });
+      items.forEach(drawItem);
+      pops.forEach((p) => {
+        if (p.delay > 0) return;
+        const x = p.sway !== undefined ? p.x + Math.sin(p.sway / 9) * 2 : p.x;
+        if (!(p.life > 12 || Math.floor(p.life / 3) % 2)) return;
+        const k = Toon.springOut(Math.min(1, ((p.life0 || 40) - p.life) / 9)); // 통통 튀며 커져요
+        if (p.heart) { Toon.heart(ctx, x, p.y, 12 * k); return; }
+        Toon.text(ctx, p.text, x, p.y, { size: (p.s === 1 ? 6 : 10) * k, color: p.color });
+      });
+
+      // 패들: 반짝이는 캡슐 (졸린 고양이 효과 중엔 보라색), 공을 받으면 살짝 눌려요
+      const sq = paddle.squash > 0 ? paddle.squash / 8 : 0;
+      const pw = paddle.w + sq * 3, ph = paddle.h - sq * 1.2;
+      const px = paddle.x - sq * 1.5, py = paddle.y + sq * 1.2;
+      Toon.box(ctx, px, py, pw, ph, ph / 2, slow > 0 ? C.grape : C.cat, { line: 1, drop: 1.6, shade: 0.25, gloss: 0.65 });
+      // 가운데 작은 고양이 얼굴 (점 눈 + w 입)
+      if (pw >= 24) {
+        const mx = px + pw / 2, my = py + ph * 0.48;
+        ctx.fillStyle = C.ink;
+        ctx.beginPath(); ctx.arc(mx - 3.4, my, 0.75, 0, Math.PI * 2); ctx.arc(mx + 3.4, my, 0.75, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = C.ink; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.arc(mx - 0.8, my + 0.6, 0.8, 0.1 * Math.PI, 0.9 * Math.PI); ctx.arc(mx + 0.8, my + 0.6, 0.8, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
+      }
+
+      // 공 (황금 고양이 효과 중엔 금빛)
+      const gold = pierce > 0;
+      balls.forEach((ball) => {
+        Toon.ball(ctx, ball.x, ball.y, 2.7, gold ? C.sun : C.milk, { line: 0.9, shade: gold ? 0.25 : 0.18 });
+      });
+
+      // 남은 효과 시간: 맨 위 띠에 둥근 막대 (왼쪽 금빛 = 관통, 가운데 무지개 = 화면 회전, 오른쪽 보라 = 패들 느림)
+      if (pierce > 0) timerBar(5, pierce / EFFECT.pierce, C.sun);
+      if (slow > 0) timerBar(W - 67, slow / EFFECT.slow, C.grapeHi);
+      if (spin > 0) timerBar(W / 2 - 31, spin / EFFECT.spin, RAINBOW[Math.floor(tick / 6) % RAINBOW.length]);
+
+      // 조준 화살표: 공이 패들 위에서 기다릴 때, 날아갈 방향으로 점 5개 + 화살촉
+      if (running && balls[0] && balls[0].stuck && clearing <= 0) {
+        const a = aimDeg() * Math.PI / 180, b0 = balls[0];
+        const ux = Math.sin(a), uy = -Math.cos(a);
+        ctx.strokeStyle = C.ink; ctx.lineWidth = 0.8;
+        for (let i = 1; i <= 5; i++) {
+          const d = 4 + i * 5;
+          ctx.fillStyle = i <= 3 ? C.sun : C.sunHi;
+          ctx.beginPath(); ctx.arc(b0.x + ux * d, b0.y + uy * d, 1.7 - i * 0.12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        }
+        const tipD = 40, hx = b0.x + ux * tipD, hy = b0.y + uy * tipD;
+        const nx = -uy, ny = ux; // 화살촉 옆 방향
+        ctx.fillStyle = C.sun; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(hx + ux * 4.5, hy + uy * 4.5);
+        ctx.lineTo(hx + nx * 3.6, hy + ny * 3.6);
+        ctx.lineTo(hx - nx * 3.6, hy - ny * 3.6);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+      if (clearing > 0) {
+        const k = Toon.springOut(Math.min(1, (50 - clearing) / 14));
+        Toon.text(ctx, `STAGE ${stage + 1}`, W / 2, 150, { size: 22 * k, color: C.sun });
+      }
+    }
+
+    function frame(t) {
+      if (!running) return;
+      const step = last ? Math.min(3, (t - last) / 16.67) : 1;
+      last = t;
+      update(step);
+      if (!running) return;
+      canvas.style.transform = shake > 0 ? `translateX(${Math.floor(t / 50) % 2 ? 5 : -5}px)` : "";
+      drawScene();
+      requestAnimationFrame(frame);
+    }
+
+    // ── 시작 · 멈춤 · 끝 ──
+    function start() {
+      reset();
+      overlay.hidden = true;
+      lockPointer();
+      quitBtn.hidden = true;
+      paused = false;
+      running = true;
+      last = 0;
+      Retro.sfx("start");
+      requestAnimationFrame(frame);
+    }
+
+    function showOverlay(title, text, btnText, withQuit) {
+      overlayTitle.textContent = title;
+      overlayText.textContent = text;
+      playBtn.textContent = btnText;
+      quitBtn.hidden = !withQuit;
+      pressEl.textContent = withQuit ? "PRESS ESC" : "PRESS ENTER";
+      overlay.hidden = false;
+      playBtn.focus();
+    }
+
+    function saveBest() {
+      if (score > best) {
+        best = score;
+        bestEl.textContent = Retro.pad(best);
+        try { localStorage.setItem("brick-best", String(best)); } catch (e) {}
+      }
+    }
+
+    function pause() {
+      if (!running) return;
+      running = false;
+      paused = true;
+      unlockPointer();
+      keys.left = keys.right = false;
+      canvas.style.transform = "";
+      Retro.sfx("pause");
+      showOverlay("Paused", `지금 ${score}점 · 스테이지 ${stage}. 계속할까요?`, "Resume", true);
+    }
+
+    function resume() {
+      if (!paused) return;
+      paused = false;
+      overlay.hidden = true;
+      lockPointer();
+      quitBtn.hidden = true;
+      running = true;
+      last = 0;
+      Retro.sfx("resume");
+      requestAnimationFrame(frame);
+    }
+
+    function quit() {
+      paused = false;
+      unlockPointer();
+      saveBest();
+      reset();
+      drawScene();
+      Retro.sfx("select");
+      showOverlay("Brick Break", "벽돌을 모두 깨면 다음 스테이지! 공을 놓치면 목숨이 하나 줄어요.", "Play", false);
+    }
+
+    function gameOver() {
+      running = false;
+      unlockPointer();
+      canvas.style.transform = "";
+      setSpin(0);
+      drawScene();
+      saveBest();
+      Retro.sfx("over");
+      Toon.buzz("over"); // 게임 오버: 아주 강한 진동
+      showOverlay("Game Over", `스테이지 ${stage}까지 ${score}점! 최고 기록은 ${best}점이에요.`, "Retry", false);
+    }
+
+    playBtn.addEventListener("click", () => (paused ? resume() : start()));
+    quitBtn.addEventListener("click", quit);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+
+    // ── 입력 ──
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (running) pause();
+        else if (paused && performance.now() - lockLostAt > 400) resume(); // 커서 잠금을 푼 ESC로 바로 다시 시작되지 않게
+        return;
+      }
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") { keys.left = true; paddle.target = null; if (running) e.preventDefault(); }
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") { keys.right = true; paddle.target = null; if (running) e.preventDefault(); }
+      if (e.key === " " || e.key === "ArrowUp") {
+        if (running) { e.preventDefault(); launch(); return; }
+      }
+      if ((e.key === "Enter" || e.key === " ") && !running && !paused && !clearOpen && document.activeElement !== playBtn && document.activeElement !== quitBtn) {
+        e.preventDefault();
+        start();
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keys.left = false;
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keys.right = false;
+    });
+
+    // 화면이 돌아가 있어도 손가락 · 마우스가 가리키는 곳을 게임 좌표로 바꿔요 (가운데를 기준으로 거꾸로 돌려서)
+    //  canvas.width는 3배로 커진 그림 크기라서, 화면에 보이는 크기(offsetWidth)와 게임 좌표(W)로 계산해요
+    const aim = (e) => {
+      const r = canvas.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      const a = spinDeg * Math.PI / 180;
+      const lx = dx * Math.cos(a) + dy * Math.sin(a);
+      const w = canvas.offsetWidth * (spinDeg % 180 ? H / W : 1); // 돌아간 화면의 실제 가로 길이
+      paddle.target = W / 2 + (lx / w) * W;
+    };
+    // 게임 중에는 마우스 커서를 게임 판 안에 가둬요 (Pointer Lock: 커서가 판 밖으로 나가지 않아요)
+    //  ESC · 창 전환으로 잠금이 풀리면 일시정지, 다시 하기 · 계속하기 · 판 클릭으로 다시 잠가요
+    const locked = () => document.pointerLockElement === canvas;
+    let lockLostAt = 0;
+    function lockPointer() {
+      if (locked() || !canvas.requestPointerLock) return;
+      try {
+        const p = canvas.requestPointerLock();
+        if (p && p.catch) p.catch(() => {}); // 터치 기기 · 너무 빨리 다시 잠글 때는 조용히 넘어가요
+      } catch (e) {}
+    }
+    function unlockPointer() {
+      if (locked()) document.exitPointerLock();
+    }
+    document.addEventListener("pointerlockchange", () => {
+      if (!locked() && running) { lockLostAt = performance.now(); pause(); }
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      if (!locked()) return aim(e);
+      // 잠긴 동안에는 마우스가 움직인 만큼(movementX · Y) 패들이 따라가요. 화면이 돌아가 있으면 그만큼 거꾸로 돌려서
+      const a = spinDeg * Math.PI / 180;
+      const lx = e.movementX * Math.cos(a) + e.movementY * Math.sin(a);
+      const w = canvas.offsetWidth * (spinDeg % 180 ? H / W : 1);
+      const from = paddle.target === null ? paddle.x + paddle.w / 2 : paddle.target;
+      paddle.target = Math.max(WALL, Math.min(W - WALL, from + (lx / w) * W));
+    });
+    canvas.addEventListener("pointerdown", (e) => {
+      if (!locked()) { aim(e); if (running && e.pointerType === "mouse") lockPointer(); }
+      launch();
+    });
+
+    // 시작 전에도 장면을 보여줘요 (글꼴이 준비되면 한 번 더)
+    reset();
+    drawScene();
+    Toon.ready(() => { if (!running) drawScene(); });
+
+    // ── 미리보기 모드 (기록은 저장하지 않아요) ──
+    //  ?preview=clear  : 벽돌을 1개만 남기고, 공이 그 벽돌을 깨러 날아가는 장면부터
+    //  ?preview=items  : 벽돌 21개, 벽돌마다 고양이 하나씩 (7종 × 3개, 순서는 매번 섞임)
+    //  ?preview=stage2 : 2스테이지(고양이 모양 배치)부터 바로 시작
+    const PREVIEWS = { clear: { name: "스테이지 클리어" }, items: { name: "고양이 7종 데모 (벽돌마다 하나씩)" }, stage2: { name: "스테이지 2 데모 (고양이 모양 44개)" } };
+    const preview = PREVIEWS[PREVIEW_KEY];
+
+    function runItemsDemo() {
+      reset();
+      clearWin.hidden = true; clearOpen = false;
+      // 7종 × 3개 = 21개: 7칸 × 3줄 (반 칸 옮겨서 가운데 정렬)
+      const kinds = [].concat(...[0, 1, 2].map(() => ["good", "bad", "gold", "lazy", "twin", "weird", "heart"])).sort(() => Math.random() - 0.5);
+      bricks = kinds.map((kind, i) => {
+        const r = Math.floor(i / 7), c = 0.5 + (i % 7);
+        return { x: Math.round(BX + c * (BW + GAP)), y: BY + r * (BH + GAP), row: r, alive: true, item: kind };
+      });
+      stickBall();
+      overlay.hidden = true;
+      paused = false;
+      if (!running) { running = true; last = 0; requestAnimationFrame(frame); }
+    }
+
+    function runStage2Demo() {
+      reset();
+      clearWin.hidden = true; clearOpen = false;
+      stage = 2; stageEl.textContent = stage;
+      speed = Math.min(4.2, 2.2 + (stage - 1) * SPEED_UP.stage);
+      buildBricks();
+      stageStartScore = 0; stageStartLives = lives; stageMs = 0;
+      stickBall();
+      overlay.hidden = true;
+      paused = false;
+      if (!running) { running = true; last = 0; requestAnimationFrame(frame); }
+    }
+
+    function runPreview() {
+      if (PREVIEW_KEY === "items") return runItemsDemo();
+      if (PREVIEW_KEY === "stage2") return runStage2Demo();
+      reset();
+      clearWin.hidden = true; clearOpen = false;
+      score = 1180; scoreEl.textContent = Retro.pad(score);
+      const lastOne = bricks[4 * COLS + 3]; // 맨 아래 줄 가운데쯤
+      bricks.forEach((b) => (b.alive = b === lastOne));
+      paddle.x = lastOne.x + BW / 2 - paddle.w / 2;
+      const ball = balls[0];
+      ball.stuck = false;
+      ball.x = lastOne.x + BW / 2 + 6;
+      ball.y = lastOne.y + 70;
+      ball.vx = -0.5; ball.vy = -speed;
+      overlay.hidden = true;
+      paused = false;
+      if (!running) { running = true; last = 0; requestAnimationFrame(frame); }
+    }
+
+    if (preview) {
+      document.getElementById("previewName").textContent = preview.name;
+      document.getElementById("previewBar").hidden = false;
+      document.getElementById("previewBtn").addEventListener("click", runPreview);
+      document.title = "PREVIEW · " + preview.name;
+      saveBest = () => {}; // 미리보기에서는 최고 기록을 바꾸지 않아요
+      runPreview();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ryan-portfolio · record catch</title>
+  <!-- 임시 게임 폰트: Galmuri11 (한글 픽셀 폰트, 내 폴더에 있는 파일) -->
+  <link href="fonts/galmuri11.css" rel="stylesheet">
+  <link href="retro.css" rel="stylesheet">
+  <style>
+    .board { max-width: 800px; --screen-ratio: 4 / 3; }
+    .screen { aspect-ratio: 4 / 3; cursor: none; touch-action: none; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="arcade.html" id="backLink"><span data-px="arrowL"></span>Back</a>
+      <div class="top-right">
+        <span class="hi">HI <span id="best">000000</span></span>
+        <button class="btn-ghost" id="themeBtn" type="button"></button>
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <h1 class="band">CATCH</h1>
+    <p class="how">떨어지는 레코드판을 고양이로 받아요. 빨간 X는 피하세요.<br>방향키 · A/D 또는 마우스 · 터치로 움직이고, ESC로 잠시 멈춰요.</p>
+
+    <main class="board px-frame">
+      <canvas class="screen" id="game" width="256" height="192" aria-label="레코드 받기 게임 화면"></canvas>
+      <div class="hud">
+        <span>Score <span class="num" id="score">000000</span></span>
+        <span class="hearts" id="lives" aria-label="남은 목숨"></span>
+      </div>
+
+      <div class="overlay" id="overlay">
+        <h2 id="overlayTitle">Record Catch</h2>
+        <p id="overlayText">레코드판은 +1점, 빨간 X에 닿으면 목숨이 하나 줄어요.</p>
+        <div class="actions">
+          <button class="btn-ghost" id="quitBtn" type="button" hidden>Quit</button>
+          <button class="btn" id="playBtn" type="button">Play</button>
+        </div>
+        <p class="press blink" id="press">PRESS ENTER</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="retro.js"></script>
+  <script>
+    Retro.icons();
+    Retro.mountMute(document.getElementById("soundBtn"));
+    // 라이트 모드: 배경을 다시 그리고 화면을 새로 그려요
+    Retro.mountTheme(document.getElementById("themeBtn"), () => { drawBg(); if (!running) drawScene(); });
+
+    // 뒤로 가기: arcade.html에서 왔다면 브라우저 기록으로 되돌아가요
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /arcade\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    // ── 게임 (256×192 픽셀 화면을 크게 키워서 보여줘요) ──
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
+    const GROUND = H - 14;
+    const P = Retro.PAL, S = Retro.SPR;
+
+    const scoreEl = document.getElementById("score");
+    const livesEl = document.getElementById("lives");
+    const bestEl = document.getElementById("best");
+    const overlay = document.getElementById("overlay");
+    const overlayTitle = document.getElementById("overlayTitle");
+    const overlayText = document.getElementById("overlayText");
+    const pressEl = document.getElementById("press");
+    const playBtn = document.getElementById("playBtn");
+    const quitBtn = document.getElementById("quitBtn");
+
+    let best = 0;
+    try { best = Number(localStorage.getItem("arcade-best")) || 0; } catch (e) {}
+    bestEl.textContent = Retro.pad(best);
+
+    // 배경은 한 번만 그려 두고 매 프레임 복사해요
+    const bg = document.createElement("canvas");
+    bg.width = W; bg.height = H;
+    // 배경 색: 다크 = 밤하늘 / 라이트 = 크림 → 연보라 낮하늘
+    const theme = () => Retro.isLight()
+      ? { s1: P.c, s2: "#efe8fc", s3: "#e2d8fb", hill: "#cfc2f7", ground: P.p, line: P.v, pebble: "#9c87f2", star: P.p, twinkle: P.h }
+      : { s1: P.k, s2: P.d, s3: P.i, hill: P.d, ground: P.k, line: P.v, pebble: P.i, star: P.p, twinkle: P.c };
+
+    function drawBg() {
+      const T = theme();
+      const g = bg.getContext("2d");
+      const band = (y0, y1, col) => { g.fillStyle = col; g.fillRect(0, y0, W, y1 - y0); };
+      band(0, 72, T.s1); band(72, 124, T.s2); band(124, H, T.s3);
+      // 색 경계는 체크무늬로 섞어요 (8bit 디더링)
+      [[72, T.s1], [124, T.s2]].forEach(([y, col]) => {
+        g.fillStyle = col;
+        for (let x = 0; x < W; x += 2) { g.fillRect(x, y, 1, 1); g.fillRect(x + 1, y + 2, 1, 1); }
+      });
+      // 계단 모양 먼 언덕
+      g.fillStyle = T.hill;
+      for (let x = 0; x < W; x += 8) {
+        const h = 10 + Math.round(6 * Math.sin(x / 28) + 4 * Math.sin(x / 11));
+        g.fillRect(x, GROUND - h, 8, h);
+      }
+      // 땅
+      g.fillStyle = T.ground;
+      g.fillRect(0, GROUND, W, H - GROUND);
+      g.fillStyle = T.line;
+      g.fillRect(0, GROUND, W, 1);
+      g.fillStyle = T.pebble;
+      for (let x = 3; x < W; x += 13) g.fillRect(x, GROUND + 5 + (x % 3) * 2, 3, 1);
+      Retro.draw(g, S.moon, W - 44, 14, { s: 2 });
+    }
+    drawBg();
+
+    const stars = Array.from({ length: 34 }, () => ({ x: Math.floor(Math.random() * W), y: Math.floor(Math.random() * 110), tw: Math.floor(Math.random() * 120) }));
+
+    const cat = { x: W / 2, target: W / 2, speed: 3.6, blinkIn: 120, blink: 0, bob: 0 };
+    const CAT_Y = GROUND - 30;
+    const keys = { left: false, right: false };
+    let items = [], pops = [], score = 0, lives = 3, running = false, paused = false, spawnIn = 0, shake = 0, last = 0, tick = 0;
+
+    function hearts() {
+      livesEl.innerHTML = [0, 1, 2].map((i) => `<span class="${i < lives ? "on" : "off"}">${Retro.svg(S.heart)}</span>`).join("");
+    }
+
+    function reset() {
+      items = []; pops = []; score = 0; lives = 3; spawnIn = 30; shake = 0;
+      cat.x = cat.target = W / 2;
+      scoreEl.textContent = Retro.pad(0);
+      hearts();
+    }
+
+    function spawn() {
+      const bad = Math.random() < 0.26;
+      items.push({
+        x: 10 + Math.random() * (W - 32),
+        y: -14,
+        r: 6,
+        bad,
+        vy: Math.min(3.2, 0.95 + score * 0.025 + Math.random() * 0.5),
+        t: Math.floor(Math.random() * 12),
+      });
+    }
+
+    function drawScene() {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(bg, 0, 0);
+      // 별: 몇 개씩 번갈아 반짝
+      stars.forEach((s) => {
+        const on = (tick + s.tw) % 120 < 8;
+        ctx.fillStyle = on ? theme().twinkle : theme().star;
+        ctx.fillRect(s.x, s.y, 1, 1);
+        if (on) { ctx.fillRect(s.x - 1, s.y, 3, 1); ctx.fillRect(s.x, s.y - 1, 1, 3); }
+      });
+
+      items.forEach((it) => {
+        if (it.bad) Retro.draw(ctx, S.bad, it.x - 5, it.y - 5);
+        else Retro.draw(ctx, Math.floor((it.t + tick) / 6) % 2 ? S.recordB : S.recordA, it.x - 6, it.y - 6);
+      });
+
+      const face = cat.blink > 0 ? S.catBlink : S.catFace;
+      Retro.draw(ctx, face, cat.x - 16, CAT_Y + cat.bob, { s: 2 });
+
+      pops.forEach((p) => {
+        if (p.life > 10 || Math.floor(p.life / 2) % 2) Retro.text(ctx, p.text, p.x, p.y, { color: p.color, align: "center" });
+      });
+    }
+
+    function update(step) {
+      tick++;
+      if (keys.left) cat.target -= cat.speed * step;
+      if (keys.right) cat.target += cat.speed * step;
+      cat.target = Math.max(18, Math.min(W - 18, cat.target));
+      const dx = (cat.target - cat.x) * Math.min(1, 0.35 * step);
+      cat.x += dx;
+      // 움직이는 동안 한 픽셀씩 통통 (2프레임)
+      cat.bob = Math.abs(dx) > 0.3 && Math.floor(tick / 6) % 2 ? -1 : 0;
+      if (cat.blink > 0) cat.blink -= step;
+      else if ((cat.blinkIn -= step) <= 0) { cat.blink = 8; cat.blinkIn = 120 + Math.random() * 140; }
+
+      spawnIn -= step;
+      if (spawnIn <= 0) {
+        spawn();
+        spawnIn = Math.max(20, 46 - score * 0.6);
+      }
+
+      for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i];
+        it.y += it.vy * step;
+        const hit = Math.hypot(it.x - cat.x, it.y - (CAT_Y + 18)) < it.r + 14;
+        if (hit) {
+          items.splice(i, 1);
+          if (it.bad) {
+            lives--;
+            shake = 12;
+            pops.push({ x: it.x, y: it.y - 8, text: "-1", color: P.r, life: 30 });
+            hearts();
+            Retro.sfx("hit");
+            if (lives <= 0) return gameOver();
+          } else {
+            score++;
+            pops.push({ x: it.x, y: it.y - 8, text: "+1", color: P.h, life: 30 });
+            scoreEl.textContent = Retro.pad(score);
+            Retro.sfx("coin");
+          }
+        } else if (it.y > H + 14) {
+          items.splice(i, 1);
+        }
+      }
+
+      pops.forEach((p) => { p.y -= 0.5 * step; p.life -= step; });
+      pops = pops.filter((p) => p.life > 0);
+      if (shake > 0) shake -= step;
+    }
+
+    function frame(t) {
+      if (!running) return;
+      const step = last ? Math.min(3, (t - last) / 16.67) : 1;
+      last = t;
+      update(step);
+      if (!running) return;
+      // 맞으면 화면이 4px씩 좌우로 흔들려요
+      canvas.style.transform = shake > 0 ? `translateX(${Math.floor(t / 50) % 2 ? 4 : -4}px)` : "";
+      drawScene();
+      requestAnimationFrame(frame);
+    }
+
+    function start() {
+      reset();
+      overlay.hidden = true;
+      quitBtn.hidden = true;
+      paused = false;
+      running = true;
+      last = 0;
+      Retro.sfx("start");
+      requestAnimationFrame(frame);
+    }
+
+    function showOverlay(title, text, btnText, withQuit) {
+      overlayTitle.textContent = title;
+      overlayText.textContent = text;
+      playBtn.textContent = btnText;
+      quitBtn.hidden = !withQuit;
+      pressEl.textContent = withQuit ? "PRESS ESC" : "PRESS ENTER";
+      overlay.hidden = false;
+      playBtn.focus();
+    }
+
+    function saveBest() {
+      if (score > best) {
+        best = score;
+        bestEl.textContent = Retro.pad(best);
+        try { localStorage.setItem("arcade-best", String(best)); } catch (e) {}
+      }
+    }
+
+    // ESC: 잠시 멈춤
+    function pause() {
+      if (!running) return;
+      running = false;
+      paused = true;
+      keys.left = keys.right = false;
+      canvas.style.transform = "";
+      Retro.sfx("pause");
+      showOverlay("Paused", `지금 ${score}점 · 목숨 ${lives}개. 계속할까요?`, "Resume", true);
+    }
+
+    function resume() {
+      if (!paused) return;
+      paused = false;
+      overlay.hidden = true;
+      quitBtn.hidden = true;
+      running = true;
+      last = 0;
+      Retro.sfx("resume");
+      requestAnimationFrame(frame);
+    }
+
+    // QUIT: 이번 판을 끝내고 첫 화면으로
+    function quit() {
+      paused = false;
+      saveBest();
+      reset();
+      drawScene();
+      Retro.sfx("select");
+      showOverlay("Record Catch", "레코드판은 +1점, 빨간 X에 닿으면 목숨이 하나 줄어요.", "Play", false);
+    }
+
+    function gameOver() {
+      running = false;
+      canvas.style.transform = "";
+      drawScene();
+      saveBest();
+      Retro.sfx("over");
+      showOverlay("Game Over", `이번 점수는 ${score}점이에요. 최고 기록은 ${best}점!`, "Retry", false);
+    }
+
+    playBtn.addEventListener("click", () => (paused ? resume() : start()));
+    quitBtn.addEventListener("click", quit);
+
+    // 다른 탭으로 가면 자동으로 멈춰요
+    document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (running) pause();
+        else if (paused) resume();
+        return;
+      }
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") { keys.left = true; if (running) e.preventDefault(); }
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") { keys.right = true; if (running) e.preventDefault(); }
+      if ((e.key === "Enter" || e.key === " ") && !running && !paused && document.activeElement !== playBtn && document.activeElement !== quitBtn) { e.preventDefault(); start(); }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keys.left = false;
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keys.right = false;
+    });
+
+    const aim = (e) => {
+      const r = canvas.getBoundingClientRect();
+      cat.target = ((e.clientX - r.left) / r.width) * W;
+    };
+    canvas.addEventListener("pointermove", aim);
+    canvas.addEventListener("pointerdown", aim);
+
+    // 시작 전에도 장면을 보여줘요
+    reset();
+    drawScene();
+  </script>
+</body>
+</html>

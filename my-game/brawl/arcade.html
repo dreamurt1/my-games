@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1e6bff">
+  <title>ryan-portfolio · arcade (brawl)</title>
+  <!-- 브롤 스타일 글꼴: Lilita One + Black Han Sans (둘 다 OFL, 내 폴더에 base64로) -->
+  <link href="../fonts/brawl-fonts.css" rel="stylesheet">
+  <link href="brawl.css" rel="stylesheet">
+  <style>
+    /* 게임 고르기: 게임마다 색이 다른 큼직한 모드 타일 */
+    .games {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(20px, 3.4vw, 34px);
+      margin-top: clamp(24px, 5vw, 44px);
+      list-style: none;
+    }
+
+    .mode {
+      --tile: var(--berry);
+      --tile-hi: var(--berry-hi);
+      --tile-lo: var(--berry-lo);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 12px 12px 16px;
+      border: 5px solid var(--ink);
+      border-radius: 26px;
+      color: var(--milk);
+      text-decoration: none;
+      background:
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.35) 0 8px, transparent 8px),
+        linear-gradient(to bottom, var(--tile-hi), var(--tile) 38%, var(--tile-lo));
+      box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.16), 0 8px 0 var(--ink);
+      transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.4), box-shadow 0.18s ease-out;
+      animation: tile-in 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+      animation-delay: calc(var(--i, 0) * 70ms);
+    }
+
+    .mode:hover, .mode:focus-visible { transform: translateY(-5px) rotate(-1deg); box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.16), 0 13px 0 var(--ink); }
+    .mode:active { transform: translateY(4px); box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.16), 0 3px 0 var(--ink); }
+    .mode:focus-visible { outline: 5px solid var(--sun-hi); outline-offset: 5px; }
+
+    @keyframes tile-in {
+      0% { transform: translateY(26px) scale(0.94); }
+      100% { transform: none; }
+    }
+
+    .mode.c-catch { --tile: var(--berry); --tile-hi: var(--berry-hi); --tile-lo: var(--berry-lo); }
+    .mode.c-puzzle { --tile: var(--grape); --tile-hi: var(--grape-hi); --tile-lo: var(--grape-lo); }
+    .mode.c-run { --tile: var(--leaf); --tile-hi: var(--leaf-hi); --tile-lo: var(--leaf-lo); }
+    .mode.c-rps { --tile: var(--cat); --tile-hi: var(--cat-hi); --tile-lo: var(--cat-lo); }
+    .mode.c-brick { --tile: #18b8d9; --tile-hi: #7fe6f7; --tile-lo: #0a7e9e; }
+
+    /* 타일 위쪽 리본 제목 (살짝 기울어져 튀어나와요) */
+    .ribbon {
+      position: relative;
+      z-index: 1;
+      align-self: flex-start;
+      margin: -26px 0 8px -10px;
+      padding: 6px 18px 8px;
+      border: 4px solid var(--ink);
+      border-radius: 14px;
+      background: var(--navy);
+      box-shadow: 0 5px 0 var(--ink);
+      font-size: clamp(22px, 3vw, 28px);
+      line-height: 1;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--sun);
+      text-shadow: var(--outline);
+      transform: rotate(-3deg);
+    }
+
+    /* 썸네일: 게임과 같은 만화 그림 (128×96을 3배로 선명하게) */
+    .thumb {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 4 / 3;
+      border: 4px solid var(--ink);
+      border-radius: 18px;
+      background: var(--sky);
+    }
+
+    /* 설명: 밝은 타일 위에서도 읽히게 남색 안내판 위에 */
+    .mode p {
+      margin-top: 12px;
+      padding: 8px 12px 9px;
+      border-radius: 12px;
+      background: rgba(11, 29, 94, 0.72);
+      font-family: "Black Han Sans", "Malgun Gothic", sans-serif;
+      font-size: clamp(16px, 3.9vw, 17px);
+      line-height: 1.55;
+      color: var(--milk);
+    }
+
+    .mode-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: auto;
+      padding-top: 14px;
+    }
+
+    .best { font-size: 17px; letter-spacing: 0.03em; text-shadow: var(--outline); font-variant-numeric: tabular-nums; }
+    .best .num { color: var(--sun); }
+
+    .mode .btn { min-height: 54px; padding: 9px 22px 11px; font-size: 24px; }
+    .mode:hover .btn { filter: brightness(1.08); }
+    .mode:active .btn { transform: translateY(4px); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 2px 0 var(--ink); }
+
+    /* 카드 수가 홀수면 마지막 카드는 가운데에 */
+    .games li:last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; width: calc(50% - 17px); }
+
+    @media (max-width: 900px) {
+      .games { grid-template-columns: 1fr; max-width: 480px; margin-inline: auto; gap: 34px; }
+      .games li:last-child:nth-child(odd) { width: 100%; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mode { animation: none; transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="../index.html" id="backLink" aria-label="뒤로 가기"><span data-icon="back"></span><span class="label">Back</span></a>
+      <div class="top-right">
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <h1 class="band">ARCADE</h1>
+    <p class="how">플레이할 게임을 골라요!</p>
+
+    <ul class="games">
+      <li>
+        <a class="mode c-catch" href="catch.html" style="--i:0">
+          <span class="ribbon">Record Catch</span>
+          <canvas class="thumb" id="thumbCatch" width="128" height="96" aria-hidden="true"></canvas>
+          <p>떨어지는 레코드판을 고양이로 받아요. 빨간 폭탄은 피하세요.</p>
+          <div class="mode-foot">
+            <span class="chip best"><span data-icon="trophy"></span>HI <span class="num" id="bestCatch">000000</span></span>
+            <span class="btn">Play</span>
+          </div>
+        </a>
+      </li>
+      <li>
+        <a class="mode c-puzzle" href="puzzle.html" style="--i:1">
+          <span class="ribbon">Cat Puzzle</span>
+          <canvas class="thumb" id="thumbPuzzle" width="128" height="96" aria-hidden="true"></canvas>
+          <p>여러 모양의 고양이들을 끌어다 5×5 방에 빈틈없이 채워요.</p>
+          <div class="mode-foot">
+            <span class="chip best"><span data-icon="puzzle"></span>CLEAR <span class="num"><span id="bestPuzzle">0</span>/3</span></span>
+            <span class="btn">Play</span>
+          </div>
+        </a>
+      </li>
+      <li>
+        <a class="mode c-run" href="run.html" style="--i:2">
+          <span class="ribbon">Cat Run</span>
+          <canvas class="thumb" id="thumbRun" width="128" height="96" aria-hidden="true"></canvas>
+          <p>신나게 달리며 스피커를 뛰어넘고, 날아오는 레코드를 피해요.</p>
+          <div class="mode-foot">
+            <span class="chip best"><span data-icon="trophy"></span>HI <span class="num" id="bestRun">000000</span></span>
+            <span class="btn">Play</span>
+          </div>
+        </a>
+      </li>
+      <li>
+        <a class="mode c-rps" href="rps.html" style="--i:3">
+          <span class="ribbon">Rock Paper Scissors</span>
+          <canvas class="thumb" id="thumbRps" width="128" height="96" aria-hidden="true"></canvas>
+          <p>가위, 바위, 보 중 하나를 골라 컴퓨터와 대결해요.</p>
+          <div class="mode-foot">
+            <span class="chip best"><span data-icon="star"></span>WINS <span class="num" id="bestRps">000000</span></span>
+            <span class="btn">Play</span>
+          </div>
+        </a>
+      </li>
+      <li>
+        <a class="mode c-brick" href="brick.html" style="--i:4">
+          <span class="ribbon">Brick Break</span>
+          <canvas class="thumb" id="thumbBrick" width="128" height="96" aria-hidden="true"></canvas>
+          <p>패들로 공을 튕겨 알록달록한 벽돌을 모두 깨요.</p>
+          <div class="mode-foot">
+            <span class="chip best"><span data-icon="trophy"></span>HI <span class="num" id="bestBrick">000000</span></span>
+            <span class="btn">Play</span>
+          </div>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script src="../retro.js"></script>
+  <script src="toon.js"></script>
+  <script>
+    Toon.icons();
+    Toon.mountMute(document.getElementById("soundBtn"));
+
+    // 뒤로 가기: index.html에서 왔다면 브라우저 기록으로 되돌아가요
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /index\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    // 각 게임의 최고 기록 (원본 8bit 게임과 같은 기록을 같이 써요)
+    function showBest() {
+      try {
+        document.getElementById("bestCatch").textContent = Retro.pad(Number(localStorage.getItem("arcade-best")) || 0);
+        document.getElementById("bestPuzzle").textContent = Number(localStorage.getItem("puzzle-clear")) || 0;
+        document.getElementById("bestRun").textContent = Retro.pad(Number(localStorage.getItem("run-best")) || 0);
+        document.getElementById("bestRps").textContent = Retro.pad(Number(localStorage.getItem("rps-wins")) || 0);
+        document.getElementById("bestBrick").textContent = Retro.pad(Number(localStorage.getItem("brick-best")) || 0);
+      } catch (e) {}
+    }
+    showBest();
+    window.addEventListener("pageshow", showBest);
+
+    document.querySelectorAll(".mode").forEach((m) => m.addEventListener("click", () => Retro.sfx("select")));
+
+    // ── 썸네일 (128×96 게임 좌표, 3배로 그려서 선명하게) ──
+    const C = Toon.C, TW = 128, TH = 96;
+
+    // 공통 땅: 줄무늬 사탕 바닥
+    function ground(g, y, offset, top = C.leaf, stripe = C.leafLo) {
+      g.fillStyle = top; g.fillRect(0, y, TW, TH - y);
+      g.fillStyle = stripe;
+      for (let x = -16; x < TW + 16; x += 16) {
+        const sx = x - (offset % 16);
+        g.beginPath(); g.moveTo(sx, TH); g.lineTo(sx + 8, y + 4); g.lineTo(sx + 14, y + 4); g.lineTo(sx + 6, TH); g.closePath(); g.fill();
+      }
+      g.fillStyle = C.leafHi; g.fillRect(0, y, TW, 3);
+      g.strokeStyle = C.ink; g.lineWidth = 1.6; g.beginPath(); g.moveTo(0, y); g.lineTo(TW, y); g.stroke();
+    }
+
+    // 둥실 구름
+    function cloud(g, x, y, s) {
+      const p = new Path2D();
+      p.arc(x, y, 6 * s, Math.PI * 0.5, Math.PI * 1.5);
+      p.arc(x + 7 * s, y - 5 * s, 7 * s, Math.PI, Math.PI * 2);
+      p.arc(x + 15 * s, y, 6 * s, Math.PI * 1.5, Math.PI * 0.5);
+      p.closePath();
+      g.fillStyle = C.milk; g.fill(p);
+      g.lineWidth = 1.3; g.strokeStyle = C.ink; g.stroke(p);
+    }
+
+    // 레코드판
+    function disc(g, x, y, r, label, spin) {
+      Toon.ball(g, x, y, r, "#2a2140", { line: 1.3, shine: false });
+      g.strokeStyle = "rgba(255,255,255,0.18)"; g.lineWidth = 0.8;
+      g.beginPath(); g.arc(x, y, r * 0.72, spin, spin + 1.6); g.stroke();
+      Toon.ball(g, x, y, r * 0.42, label, { line: 1, shine: false });
+      g.fillStyle = C.ink; g.beginPath(); g.arc(x, y, r * 0.1, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "rgba(255,255,255,0.7)"; g.beginPath(); g.ellipse(x - r * 0.45, y - r * 0.45, r * 0.22, r * 0.12, -0.7, 0, Math.PI * 2); g.fill();
+    }
+
+    // 폭탄 (피해야 하는 것)
+    function bomb(g, x, y, r, t) {
+      Toon.ball(g, x, y, r, C.berry, { line: 1.4 });
+      g.strokeStyle = C.ink; g.lineWidth = 1.6;
+      g.beginPath(); g.moveTo(x - r * 0.4, y - r * 0.4); g.lineTo(x + r * 0.4, y + r * 0.4); g.moveTo(x + r * 0.4, y - r * 0.4); g.lineTo(x - r * 0.4, y + r * 0.4); g.stroke();
+      g.beginPath(); g.moveTo(x + r * 0.5, y - r * 0.85); g.quadraticCurveTo(x + r, y - r * 1.6, x + r * 1.3, y - r * 1.3); g.stroke();
+      Toon.star(g, x + r * 1.35, y - r * 1.35, 2.4 + Math.sin(t / 3) * 0.8, C.sun, { line: 0.8 });
+    }
+
+    // 1) Record Catch
+    function drawCatch(g, t) {
+      Toon.sky(g, TW, TH, { spin: t / 400 });
+      cloud(g, 12, 22, 0.8); cloud(g, 86, 14, 0.7);
+      ground(g, 80, 0);
+      disc(g, 26, ((t * 0.9) % 110) - 12, 7, C.sun, t / 6);
+      disc(g, 100, ((t * 0.7 + 50) % 110) - 12, 7, C.grapeHi, t / 6);
+      bomb(g, 64, ((t * 1.1 + 30) % 110) - 12, 6, t);
+      const cx = 64 + Math.sin(t / 40) * 34;
+      const blink = t % 180 < 8;
+      Toon.cat(g, cx, 70, 26, { mood: blink ? "blink" : "default", look: Math.cos(t / 40) > 0 ? 0.7 : -0.7 });
+    }
+
+    // 2) Cat Puzzle: 방에 고양이 조각이 하나씩 쏙
+    const PUZ = ["AAABB", "ACCBB", "ACCDB", "EEDDD", "EEEED"];
+    const COATS = { A: C.cat, B: C.grapeHi, C: C.sun, D: C.berryHi, E: C.cream };
+    function drawPuzzle(g, t) {
+      Toon.sky(g, TW, TH, { top: C.grapeHi, bottom: C.grape, spin: t / 400 });
+      const U = 15, ox = (TW - U * 5) / 2, oy = (TH - U * 5) / 2;
+      Toon.box(g, ox - 4, oy - 4, U * 5 + 8, U * 5 + 8, 7, "#c98a4a", { line: 1.6, drop: 2.5, gloss: 0 });
+      for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
+        g.fillStyle = (r + c) % 2 ? "#f3c98e" : "#e8b170";
+        g.fillRect(ox + c * U, oy + r * U, U, U);
+      }
+      const step = Math.floor(t / 28) % 8;
+      [..."ABCDE"].forEach((ch, i) => {
+        if (i >= step) return;
+        const cells = [];
+        PUZ.forEach((row, r) => [...row].forEach((v, c) => { if (v === ch) cells.push([r, c]); }));
+        // 칸마다 둥근 네모를 칠하고 이어 붙여서 한 덩어리로
+        // 한 덩어리 조각: 잉크를 조금 크게 먼저 칠하고 그 위에 털 색을 칠해서 (안쪽 선 없이) 외곽선만 남겨요
+        const coat = COATS[ch], m = 0.9;
+        const same = (r, c) => PUZ[r] && PUZ[r][c] === ch;
+        const cellRect = (r, c, grow) => {
+          const x = ox + c * U, y = oy + r * U;
+          const l = same(r, c - 1) ? 0 : m, rt = same(r, c + 1) ? 0 : m, tp = same(r - 1, c) ? 0 : m, bt = same(r + 1, c) ? 0 : m;
+          return [x + l - grow, y + tp - grow, U - l - rt + grow * 2, U - tp - bt + grow * 2];
+        };
+        g.fillStyle = C.ink;
+        cells.forEach(([r, c]) => { const [x, y, w, h] = cellRect(r, c, 1.3); g.fillRect(x, y, w, h); }); // 네모로 칠해서 안쪽 모서리에 틈이 안 생기게
+        cells.forEach(([r, c]) => {
+          const [x, y, w, h] = cellRect(r, c, 0);
+          g.fillStyle = coat; g.fillRect(x, y, w, h);
+          if (!same(r + 1, c)) { g.fillStyle = Toon.tint(coat, -0.2); g.fillRect(x, y + h - 2.6, w, 2.6); } // 아래쪽 그림자
+          if (!same(r - 1, c)) { g.fillStyle = "rgba(255,255,255,0.55)"; g.fillRect(x + 2, y + 1.6, w - 4, 1.4); } // 위쪽 반짝이
+        });
+        // 마지막 칸에 동그랗게 말린 꼬리
+        const [rl, cl] = cells[cells.length - 1];
+        const tx = ox + cl * U + U * 0.62, ty = oy + rl * U + U * 0.55;
+        g.lineCap = "round";
+        g.strokeStyle = C.ink; g.lineWidth = 3.4; g.beginPath(); g.arc(tx, ty, 3, Math.PI * 0.9, Math.PI * 2.4); g.stroke();
+        g.strokeStyle = Toon.tint(coat, -0.12); g.lineWidth = 1.6; g.stroke();
+        const [r0, c0] = cells[0];
+        const pop = i === step - 1 ? Toon.springOut(Math.min(1, (t % 28) / 12)) : 1;
+        Toon.cat(g, ox + c0 * U + U / 2, oy + r0 * U + U / 2 + 1, 13 * pop, { coat, mood: i % 2 ? "happy" : "default", line: 0.9 });
+      });
+    }
+
+    // 3) Cat Run: 고양이가 달리며 스피커를 뛰어넘어요
+    function runner(g, x, y, t, air) {
+      // 꼬리 · 몸 · 다리 · 머리
+      const leg = air ? 0.6 : Math.sin(t / 3) * 0.9;
+      g.lineCap = "round";
+      g.strokeStyle = C.ink; g.lineWidth = 5; g.beginPath(); g.moveTo(x - 9, y + 2); g.quadraticCurveTo(x - 17, y - 2, x - 15, y - 10); g.stroke();
+      g.strokeStyle = C.cat; g.lineWidth = 2.6; g.stroke();
+      [[-4, leg], [4, -leg]].forEach(([dx, a]) => {
+        g.strokeStyle = C.ink; g.lineWidth = 4.6; g.beginPath(); g.moveTo(x + dx, y + 4); g.lineTo(x + dx + Math.sin(a) * 5, y + 10); g.stroke();
+        g.strokeStyle = C.catLo; g.lineWidth = 2.2; g.stroke();
+      });
+      Toon.box(g, x - 10, y - 3, 20, 11, 5.5, C.cat, { line: 1.3, gloss: 0.3 });
+      Toon.cat(g, x + 9, y - 8, 17, { mood: air ? "grin" : "default", look: 1, line: 1 });
+    }
+    function speaker(g, x, y) {
+      Toon.box(g, x, y, 15, 19, 3.5, C.grape, { line: 1.4, drop: 1.6 });
+      Toon.ball(g, x + 7.5, y + 12, 4.4, "#2a2140", { line: 1.1, shine: false });
+      Toon.ball(g, x + 7.5, y + 12, 1.8, C.grapeHi, { line: 0.8, shine: false });
+      Toon.ball(g, x + 7.5, y + 4.6, 2, "#2a2140", { line: 0.9, shine: false });
+    }
+    function drawRun(g, t) {
+      Toon.sky(g, TW, TH, { spin: t / 500 });
+      [0, 1, 2].forEach((i) => cloud(g, ((i * 60 - t * 0.3) % 180 + 180) % 180 - 30, 14 + i * 7, 0.7));
+      g.fillStyle = "#58c96a"; g.strokeStyle = C.ink; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(0, 78);
+      for (let x = 0; x <= TW; x += 4) g.lineTo(x, 66 + Math.sin((x + t * 0.6) / 18) * 6);
+      g.lineTo(TW, 78); g.closePath(); g.fill(); g.stroke();
+      ground(g, 76, t * 1.6);
+      const sx = TW - ((t * 1.6) % (TW + 40));
+      speaker(g, sx, 57);
+      const near = sx - 30;
+      const air = near > -16 && near < 26;
+      const jumpY = air ? Math.sin(((near + 16) / 42) * Math.PI) * 24 : 0;
+      runner(g, 30, 64 - jumpY, t, air);
+    }
+
+    // 4) Rock Paper Scissors: 사탕 버튼 위 손 세 개
+    function fist(g, x, y, s) {
+      Toon.box(g, x - s * 0.5, y - s * 0.35, s, s * 0.8, s * 0.3, C.cream, { line: 1.3, shade: 0.12, gloss: 0 });
+      g.strokeStyle = C.ink; g.lineWidth = 1;
+      [-0.2, 0.05, 0.3].forEach((d) => { g.beginPath(); g.moveTo(x + d * s, y - s * 0.35); g.lineTo(x + d * s, y - s * 0.05); g.stroke(); });
+      Toon.box(g, x - s * 0.55, y - s * 0.02, s * 0.45, s * 0.28, s * 0.14, C.cream, { line: 1.1, shade: 0, gloss: 0 });
+    }
+    function paper(g, x, y, s) {
+      [-0.32, -0.11, 0.1, 0.31].forEach((d, i) => Toon.box(g, x + d * s - s * 0.09, y - s * (0.62 - Math.abs(i - 1.5) * 0.06), s * 0.18, s * 0.6, s * 0.09, C.cream, { line: 1.1, shade: 0, gloss: 0 }));
+      Toon.box(g, x - s * 0.42, y - s * 0.15, s * 0.84, s * 0.6, s * 0.25, C.cream, { line: 1.3, shade: 0.12, gloss: 0 });
+      g.save(); g.translate(x - s * 0.42, y + s * 0.05); g.rotate(-0.7);
+      Toon.box(g, -s * 0.08, -s * 0.36, s * 0.17, s * 0.42, s * 0.085, C.cream, { line: 1.1, shade: 0, gloss: 0 });
+      g.restore();
+    }
+    function scissors(g, x, y, s) {
+      [-0.32, 0.32].forEach((a) => {
+        g.save(); g.translate(x, y); g.rotate(a);
+        Toon.box(g, -s * 0.09, -s * 0.7, s * 0.18, s * 0.62, s * 0.09, C.cream, { line: 1.1, shade: 0, gloss: 0 });
+        g.restore();
+      });
+      Toon.box(g, x - s * 0.36, y - s * 0.12, s * 0.72, s * 0.55, s * 0.24, C.cream, { line: 1.3, shade: 0.12, gloss: 0 });
+    }
+    function drawRps(g, t) {
+      Toon.sky(g, TW, TH, { top: C.catHi, bottom: C.cat, spin: t / 400 });
+      const hands = [scissors, fist, paper], pads = [C.sun, C.grape, C.berry];
+      const active = Math.floor(t / 30) % 3;
+      hands.forEach((h, i) => {
+        const x = 22 + i * 42, bounce = i === active ? -Math.abs(Math.sin((t % 30) / 30 * Math.PI)) * 7 : 0;
+        Toon.box(g, x - 17, 30 + bounce, 34, 36, 8, pads[i], { line: 1.6, drop: 3 });
+        h(g, x, 52 + bounce, 20);
+      });
+      Toon.text(g, "VS", TW / 2, 16, { size: 14, color: C.sun });
+    }
+
+    // 5) Brick Break: 사탕 벽돌, 패들, 통통 튀는 공, 떨어지는 고양이 캡슐
+    const ROWS = [C.berry, C.cat, C.sun, C.grapeHi, C.grape];
+    function drawBrick(g, t) {
+      Toon.sky(g, TW, TH, { top: "#7fe6f7", bottom: "#18b8d9", spin: t / 500 });
+      ROWS.forEach((col, r) => {
+        for (let c = 0; c < 7; c++) {
+          if ((r * 7 + c + Math.floor(t / 40)) % 17 === 0) continue; // 가끔 한 칸씩 깨진 것처럼
+          Toon.box(g, 8 + c * 16, 10 + r * 9, 14, 7, 2.5, col, { line: 1.1, gloss: 0.45 });
+        }
+      });
+      const px = 50 + Math.sin(t / 50) * 30;
+      Toon.box(g, px - 14, 82, 28, 7, 3.5, C.cat, { line: 1.3, drop: 1.5, gloss: 0.5 });
+      const bx = px + Math.sin(t / 18) * 6, by = 76 - Math.abs(Math.sin(t / 22)) * 26;
+      Toon.ball(g, bx, by, 3.4, C.milk, { line: 1.1 });
+      const cy = ((t * 0.5) % 120) - 12;
+      Toon.ball(g, 98, cy, 7.5, C.leaf, { line: 1.2, shine: false });
+      Toon.cat(g, 98, cy + 0.5, 11, { coat: C.leaf, mood: "happy", line: 0.8, blush: false });
+    }
+
+    const thumbs = [
+      ["thumbCatch", drawCatch], ["thumbPuzzle", drawPuzzle], ["thumbRun", drawRun], ["thumbRps", drawRps], ["thumbBrick", drawBrick],
+    ].map(([id, fn]) => [Toon.setup(document.getElementById(id), TW, TH, 3), fn]);
+
+    // 부드럽게 1초에 60번 (움직임 줄이기 설정이면 멈춘 그림, 탭이 숨으면 쉬어요)
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let t = 140; // 처음부터 퍼즐 조각이 몇 개 들어 있는 장면으로
+    const paint = () => thumbs.forEach(([g, fn]) => { g.save(); fn(g, t); g.restore(); });
+    Toon.ready(paint);
+    if (!still) {
+      let last = 0;
+      const loop = (now) => {
+        if (!document.hidden) { t += last ? Math.min(3, (now - last) / 16.67) : 1; paint(); }
+        last = now;
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    }
+  </script>
+</body>
+</html>

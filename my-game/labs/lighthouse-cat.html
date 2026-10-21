@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>등대지기 고양이 · Labs</title>
+  <link href="../fonts/pretendard.css" rel="stylesheet">
+  <style>
+    :root { --night: #0c1233; --indigo: #1b2559; --deep: #121a45; --orange: #ff9a3c; --yellow: #ffd66b; --pale: #ffe9a8; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--deep); }
+    body { font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', sans-serif; color: var(--pale); word-break: keep-all; }
+    canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+    .back { position: fixed; left: 20px; bottom: 18px; color: rgba(255, 233, 168, 0.55); text-decoration: none; font-size: 14px; }
+    .back:hover { color: var(--pale); }
+    :focus-visible { outline: 2px solid var(--yellow); outline-offset: 4px; }
+
+    .end {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+      padding: 24px; text-align: center;
+      background: rgba(12, 18, 51, 0.5);
+      opacity: 0; pointer-events: none; transition: opacity 0.9s ease;
+    }
+    .end.on { opacity: 1; pointer-events: auto; }
+    .end p { max-width: 26em; font-size: clamp(18px, 2.4vw, 22px); line-height: 1.6; }
+    .again {
+      padding: 12px 26px; border: 1px solid rgba(255, 214, 107, 0.6); border-radius: 999px;
+      background: transparent; color: var(--yellow); font: inherit; font-size: 16px; cursor: pointer;
+      transition: background 0.3s, color 0.3s;
+    }
+    .again:hover { background: var(--yellow); color: var(--night); }
+  </style>
+</head>
+<body>
+  <canvas id="c" aria-label="등대지기 고양이: 고양이를 옮겨 등불을 켜는 퍼즐"></canvas>
+  <a class="back" href="../labs.html">← Labs</a>
+  <div class="end" id="end" aria-live="polite">
+    <p id="msg"></p>
+    <button class="again" id="again" type="button">다시 한 번</button>
+  </div>
+
+  <script>
+    // ─────────────────────────────────────────────
+    // 등대지기 고양이 — 시제품 (격자 + 한붓그리기)
+    // 이웃한 칸을 누르면 고양이가 한 칸 움직여요. 지나온 칸은 다시 갈 수 없어요.
+    // 모든 등불을 켜면 다음 길목으로. 길이 막히면 처음부터 다시.
+    // ─────────────────────────────────────────────
+    // # = 벽, . = 길, C = 고양이 시작, L = 꺼진 등불
+    const STAGES = [
+      ["C..#.",
+       ".#.L.",
+       ".#...",
+       "L..#.",
+       "##.L."],
+      ["C.#L..",
+       "..#.#.",
+       "L....L",
+       ".##.#.",
+       "..L...",
+       "#...#L"],
+      ["..L#...",
+       ".#...#L",
+       "C#.#.#.",
+       "...L...",
+       ".#.#.#.",
+       "L#...#.",
+       "...#..L"],
+    ];
+
+    const cv = document.getElementById("c");
+    const g = cv.getContext("2d");
+    const endEl = document.getElementById("end");
+    const msgEl = document.getElementById("msg");
+    const againBtn = document.getElementById("again");
+    let W = 0, H = 0;
+
+    function resize() {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      W = innerWidth; H = innerHeight;
+      cv.width = W * dpr; cv.height = H * dpr;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    addEventListener("resize", resize);
+    resize();
+
+    let stage = 0, map, cat, visited, lit, lanternCount, state, anim, clearT, endAction;
+
+    function load(i) {
+      stage = i;
+      map = STAGES[i].map((r) => [...r]);
+      visited = new Set();
+      lit = new Set();
+      lanternCount = 0;
+      map.forEach((row, r) => row.forEach((ch, c) => {
+        if (ch === "C") cat = { r, c, x: c, y: r };
+        if (ch === "L") lanternCount++;
+      }));
+      visited.add(cat.r + "," + cat.c);
+      state = "play";
+      anim = null;
+      clearT = 0;
+      endEl.classList.remove("on");
+    }
+
+    const isFloor = (r, c) => map[r] && map[r][c] !== undefined && map[r][c] !== "#";
+    const canGo = (r, c) => isFloor(r, c) && !visited.has(r + "," + c) && Math.abs(r - cat.r) + Math.abs(c - cat.c) === 1;
+    const moves = () => [[-1, 0], [1, 0], [0, -1], [0, 1]].filter(([dr, dc]) => canGo(cat.r + dr, cat.c + dc));
+
+    function step(r, c) {
+      if (state !== "play" || anim || !canGo(r, c)) return;
+      anim = { fr: cat.r, fc: cat.c, t: 0 };
+      cat.r = r; cat.c = c;
+      visited.add(r + "," + c);
+      if (map[r][c] === "L") lit.add(r + "," + c);
+      if (lit.size === lanternCount) { state = "clear"; clearT = 0; }
+      else if (!moves().length) {
+        state = "stuck";
+        setTimeout(() => showEnd("길이 막혔어요. 다른 길로 다시 걸어 볼까요?", "다시 한 번", () => load(stage)), 700);
+      }
+    }
+
+    function showEnd(text, btn, action) {
+      msgEl.textContent = text;
+      againBtn.textContent = btn;
+      endAction = action;
+      endEl.classList.add("on");
+      againBtn.focus();
+    }
+    againBtn.addEventListener("click", () => endAction && endAction());
+
+    // ── 격자 위치 ──
+    function geom() {
+      const rows = map.length, cols = map[0].length;
+      const size = Math.floor(Math.min((W - 80) / cols, (H - 140) / rows, 84));
+      return { size, x0: Math.round((W - size * cols) / 2), y0: Math.round((H - size * rows) / 2) + 10, rows, cols };
+    }
+
+    cv.addEventListener("pointerdown", (e) => {
+      const { size, x0, y0 } = geom();
+      step(Math.floor((e.clientY - y0) / size), Math.floor((e.clientX - x0) / size));
+    });
+    addEventListener("keydown", (e) => {
+      const d = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
+      if (d) { e.preventDefault(); step(cat.r + d[0], cat.c + d[1]); }
+    });
+
+    // ── 그리기 ──
+    function glow(x, y, r, color, a) {
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, color.replace("A", a));
+      gr.addColorStop(1, color.replace("A", 0));
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+
+    function drawCat(x, y, s) {
+      // 작은 검은 고양이 실루엣 (오렌지 눈)
+      g.fillStyle = "#0a0f2b";
+      g.beginPath(); g.ellipse(x, y + s * 0.12, s * 0.22, s * 0.18, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(x, y - s * 0.12, s * 0.15, 0, Math.PI * 2); g.fill();
+      g.beginPath();
+      g.moveTo(x - s * 0.14, y - s * 0.18); g.lineTo(x - s * 0.1, y - s * 0.34); g.lineTo(x - s * 0.02, y - s * 0.24);
+      g.moveTo(x + s * 0.14, y - s * 0.18); g.lineTo(x + s * 0.1, y - s * 0.34); g.lineTo(x + s * 0.02, y - s * 0.24);
+      g.fill();
+      g.strokeStyle = "#0a0f2b"; g.lineWidth = s * 0.05; g.lineCap = "round";
+      g.beginPath(); g.moveTo(x + s * 0.2, y + s * 0.2); g.quadraticCurveTo(x + s * 0.38, y + s * 0.1, x + s * 0.3, y - s * 0.08); g.stroke();
+      g.fillStyle = "#ff9a3c";
+      g.beginPath(); g.arc(x - s * 0.06, y - s * 0.13, s * 0.03, 0, Math.PI * 2); g.arc(x + s * 0.06, y - s * 0.13, s * 0.03, 0, Math.PI * 2); g.fill();
+    }
+
+    function draw(dt) {
+      const { size, x0, y0, rows, cols } = geom();
+      const cx = (c) => x0 + c * size + size / 2, cy = (r) => y0 + r * size + size / 2;
+      const warm = lit.size / lanternCount;
+
+      g.fillStyle = "#0c1233";
+      g.fillRect(0, 0, W, H);
+      g.fillStyle = `rgba(27, 37, 89, ${0.4 + warm * 0.6})`;
+      g.fillRect(0, 0, W, H);
+      if (state === "clear") { g.fillStyle = `rgba(255, 214, 107, ${Math.min(0.2, clearT * 0.15)})`; g.fillRect(0, 0, W, H); }
+
+      // 바닥
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        if (!isFloor(r, c)) continue;
+        g.fillStyle = visited.has(r + "," + c) ? "#2c3778" : "#1b2559";
+        g.fillRect(x0 + c * size + 2, y0 + r * size + 2, size - 4, size - 4);
+      }
+
+      // 켜진 등불의 빛
+      lit.forEach((k) => { const [r, c] = k.split(",").map(Number); glow(cx(c), cy(r), size * 2.4, "rgba(255, 214, 107, A)", 0.25); });
+
+      // 지나온 길 (따뜻한 발자국 선)
+      const path = [...visited].map((k) => k.split(",").map(Number));
+      g.strokeStyle = "rgba(255, 154, 60, 0.35)";
+      g.lineWidth = Math.max(2, size * 0.06);
+      g.lineCap = "round"; g.lineJoin = "round";
+      g.beginPath();
+      path.forEach(([r, c], i) => (i ? g.lineTo(cx(c), cy(r)) : g.moveTo(cx(c), cy(r))));
+      g.stroke();
+
+      // 등불
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        if (map[r][c] !== "L") continue;
+        const on = lit.has(r + "," + c);
+        if (on) glow(cx(c), cy(r), size * 0.5, "rgba(255, 233, 168, A)", 0.9);
+        g.fillStyle = on ? "#ffe9a8" : "#3a457f";
+        g.fillRect(cx(c) - size * 0.08, cy(r) - size * 0.14, size * 0.16, size * 0.24);
+        g.fillStyle = on ? "#ffd66b" : "#283266";
+        g.fillRect(cx(c) - size * 0.11, cy(r) - size * 0.18, size * 0.22, size * 0.05);
+        g.fillRect(cx(c) - size * 0.11, cy(r) + size * 0.1, size * 0.22, size * 0.05);
+      }
+
+      // 갈 수 있는 칸: 작은 점
+      if (state === "play" && !anim) moves().forEach(([dr, dc]) => {
+        g.fillStyle = "rgba(255, 233, 168, 0.35)";
+        g.beginPath(); g.arc(cx(cat.c + dc), cy(cat.r + dr), size * 0.05, 0, Math.PI * 2); g.fill();
+      });
+
+      // 고양이 (한 칸 이동 애니메이션)
+      let x = cat.c, y = cat.r;
+      if (anim) {
+        anim.t = Math.min(1, anim.t + dt * 7);
+        const e = 1 - Math.pow(1 - anim.t, 3);
+        x = anim.fc + (cat.c - anim.fc) * e;
+        y = anim.fr + (cat.r - anim.fr) * e;
+        if (anim.t >= 1) anim = null;
+      }
+      glow(x0 + x * size + size / 2, y0 + y * size + size / 2, size * 0.9, "rgba(255, 154, 60, A)", 0.18);
+      drawCat(x0 + x * size + size / 2, y0 + y * size + size / 2, size);
+
+      // HUD: 왼쪽 위 켠 등불 / 전체, 오른쪽 위 길목 번호
+      g.font = "600 18px 'Pretendard Variable', sans-serif";
+      g.textAlign = "left";
+      glow(30, 32, 14, "rgba(255, 214, 107, A)", 0.8);
+      g.fillStyle = "#ffe9a8";
+      g.beginPath(); g.arc(30, 32, 5, 0, Math.PI * 2); g.fill();
+      g.fillText(`${lit.size} / ${lanternCount}`, 46, 38);
+      g.textAlign = "right";
+      g.fillStyle = "rgba(255, 233, 168, 0.6)";
+      g.font = "15px 'Pretendard Variable', sans-serif";
+      g.fillText(`길목 ${stage + 1} / ${STAGES.length}`, W - 24, 38);
+    }
+
+    let last = 0;
+    function frame(t) {
+      const dt = Math.min(0.05, last ? (t - last) / 1000 : 0.016);
+      last = t;
+      if (state === "clear") {
+        clearT += dt;
+        if (clearT > 1.1 && !endEl.classList.contains("on")) {
+          if (stage < STAGES.length - 1) showEnd("길목이 환해졌어요.", "다음 길목", () => load(stage + 1));
+          else showEnd("모든 길목에 불이 켜졌어요. 오늘 밤은 아무도 길을 잃지 않을 거예요.", "처음부터", () => load(0));
+        }
+      }
+      draw(dt);
+      requestAnimationFrame(frame);
+    }
+
+    load(0);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

@@ -1,0 +1,354 @@
+/* ─────────────────────────────────────────────
+   브롤 스타일 공용 스타일 (brawl/ 폴더의 아케이드 · 게임 5개)
+   - 굵은 잉크 외곽선, 반짝이는 사탕 버튼(아래쪽 그림자 턱), 기울어진 큰 제목
+   - 파란 햇살 무늬 배경, 모바일에서 손가락으로 누르기 좋은 크기
+   - 원본 8bit 페이지(retro.css)와 같은 클래스 이름을 써서 게임 구조는 그대로
+   ───────────────────────────────────────────── */
+:root {
+  --ink: #120c24;
+  --navy: #0b1d5e;
+  --sky-lo: #1447c4;
+  --sky: #1e6bff;
+  --sky-hi: #4f9bff;
+  --sun-lo: #f29d0b;
+  --sun: #ffd23f;
+  --sun-hi: #fff27a;
+  --leaf-lo: #1e9b2a;
+  --leaf: #3fd34a;
+  --leaf-hi: #9cf26f;
+  --berry-lo: #c41d4b;
+  --berry: #ff3d6e;
+  --berry-hi: #ff8fb0;
+  --grape-lo: #5a25c9;
+  --grape: #8b4dff;
+  --grape-hi: #c4a2ff;
+  --cat-lo: #d9600f;
+  --cat: #ff8a2b;
+  --cat-hi: #ffc07a;
+  --milk: #ffffff;
+  --cream: #fff6e6;
+  --mist: #d9e6ff;   /* 파란 바탕 위 보조 글자 */
+
+  --line: 4px;       /* 기본 외곽선 두께 */
+  --lip: 6px;        /* 버튼 · 판 아래쪽 그림자 턱 */
+  --radius: 18px;
+
+  /* 흰 글자에 잉크 외곽선 + 아래로 떨어지는 그림자 */
+  --outline: 0 2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink),
+    2px 2px 0 var(--ink), -2px 2px 0 var(--ink), 2px -2px 0 var(--ink), -2px -2px 0 var(--ink);
+  --outline-drop: var(--outline), 0 4px 0 var(--ink), 2px 4px 0 var(--ink), -2px 4px 0 var(--ink);
+  --outline-big: 0 3px 0 var(--ink), 3px 0 0 var(--ink), -3px 0 0 var(--ink), 0 -3px 0 var(--ink),
+    3px 3px 0 var(--ink), -3px 3px 0 var(--ink), 3px -3px 0 var(--ink), -3px -3px 0 var(--ink),
+    0 7px 0 var(--ink), 3px 7px 0 var(--ink), -3px 7px 0 var(--ink);
+
+  --font: "Lilita One", "Black Han Sans", "Malgun Gothic", sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  scrollbar-color: var(--sun) var(--navy);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  font-family: var(--font);
+  font-weight: 400;
+  color: var(--milk);
+  background-color: var(--sky);
+  /* 화면 위쪽 가운데에서 퍼지는 햇살 줄무늬 + 아래로 갈수록 짙은 남색 */
+  background-image:
+    radial-gradient(120% 80% at 50% 0%, transparent 40%, rgba(11, 29, 94, 0.55) 100%),
+    repeating-conic-gradient(from 0deg at 50% 0%, var(--sky) 0deg 9deg, var(--sky-hi) 9deg 18deg);
+  background-attachment: fixed;
+  word-break: keep-all;
+  line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection { background: var(--sun); color: var(--ink); }
+:focus-visible { outline: 4px solid var(--sun-hi); outline-offset: 4px; border-radius: 12px; }
+
+.ico { display: block; width: auto; height: 1.15em; flex: none; overflow: visible; }
+
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 clamp(14px, 4vw, 48px) calc(48px + env(safe-area-inset-bottom));
+}
+
+/* ── 맨 위 막대 ── */
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: max(18px, env(safe-area-inset-top)) 0 8px;
+}
+
+.top-right { display: flex; align-items: center; gap: 10px; }
+
+/* 최고 기록 칩: 남색 알약 + 노란 숫자 */
+.hi {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 8px;
+  border: var(--line) solid var(--ink);
+  border-radius: 999px;
+  background: var(--navy);
+  box-shadow: 0 4px 0 var(--ink);
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  color: var(--mist);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hi .ico { height: 22px; }
+.hi span { color: var(--sun); text-shadow: 0 2px 0 var(--ink); }
+
+/* ── 버튼: 사탕처럼 반짝, 아래쪽 턱, 누르면 쑥 들어가요 ── */
+.btn, .btn-ghost {
+  --face: var(--sun);
+  --face-hi: var(--sun-hi);
+  --face-lo: var(--sun-lo);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 26px 12px;
+  border: var(--line) solid var(--ink);
+  border-radius: 16px;
+  font: inherit;
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--milk);
+  text-shadow: var(--outline-drop);
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.55) 0 6px, transparent 6px) padding-box,
+    linear-gradient(to bottom, var(--face-hi), var(--face) 45%, var(--face) 70%, var(--face-lo)) padding-box;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.18), 0 var(--lip) 0 var(--ink);
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: transform 0.08s ease-out, box-shadow 0.08s ease-out, filter 0.15s ease-out;
+}
+
+.btn .ico, .btn-ghost .ico { filter: drop-shadow(0 2px 0 var(--ink)); }
+
+.btn:hover, .btn-ghost:hover { filter: brightness(1.08); }
+
+.btn:active, .btn-ghost:active {
+  transform: translateY(calc(var(--lip) - 2px));
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 2px 0 var(--ink);
+}
+
+/* 보조 버튼: 파란 사탕 */
+.btn-ghost {
+  --face: var(--sky);
+  --face-hi: var(--sky-hi);
+  --face-lo: var(--sky-lo);
+  min-height: 46px;
+  padding: 7px 16px 9px;
+  font-size: 18px;
+  border-radius: 14px;
+}
+
+.btn-ghost[aria-pressed="false"] { --face: #5b6fa8; --face-hi: #8797c6; --face-lo: #3d4c7d; }
+
+/* 초록 · 빨강 · 보라 버튼 (페이지에서 골라 쓰기) */
+.btn.go { --face: var(--leaf); --face-hi: var(--leaf-hi); --face-lo: var(--leaf-lo); }
+.btn.danger { --face: var(--berry); --face-hi: var(--berry-hi); --face-lo: var(--berry-lo); }
+.btn.grape { --face: var(--grape); --face-hi: var(--grape-hi); --face-lo: var(--grape-lo); }
+
+/* ── 큰 제목: 살짝 기울어진 노란 외침 ── */
+.band {
+  margin: clamp(10px, 3vw, 22px) auto 0;
+  text-align: center;
+  font-size: clamp(52px, 13vw, 104px);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--sun);
+  text-shadow: var(--outline-big);
+  transform: rotate(-3deg);
+  transform-origin: 50% 60%;
+}
+
+.band.small { font-size: clamp(42px, 10vw, 84px); }
+
+/* 안내문: 햇살 줄무늬 위에서도 읽히게 남색 안내판 위에 */
+.how {
+  width: fit-content;
+  max-width: min(62ch, 100%);
+  margin: 22px auto 0;
+  padding: 10px 18px 11px;
+  border-radius: 16px;
+  background: rgba(11, 29, 94, 0.72);
+  text-align: center;
+  font-family: "Black Han Sans", "Malgun Gothic", sans-serif;
+  font-size: clamp(16px, 4vw, 18px);
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  color: var(--milk);
+  text-shadow: 0 2px 0 rgba(18, 12, 36, 0.65);
+}
+
+/* ── 게임 판: 남색 두꺼운 판 + 둥근 화면 ── */
+.board {
+  position: relative;
+  margin: clamp(18px, 4vw, 34px) auto 0;
+  padding: clamp(8px, 2vw, 14px);
+  border: 5px solid var(--ink);
+  border-radius: calc(var(--radius) + 6px);
+  background: linear-gradient(to bottom, #2a3f9e, var(--navy));
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.18), 0 8px 0 var(--ink);
+}
+
+.screen {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: var(--line) solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--sky);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 점수판: 판 위아래에 붙는 알약 칩들 */
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 2px 2px;
+  font-size: clamp(16px, 4vw, 20px);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  text-shadow: var(--outline);
+}
+
+.hud .num { color: var(--sun); }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px 5px 8px;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: rgba(11, 29, 94, 0.9);
+  box-shadow: 0 3px 0 var(--ink);
+  white-space: nowrap;
+}
+
+.chip .ico { height: 22px; }
+
+.hearts { display: flex; gap: 4px; }
+.hearts .ico { height: clamp(22px, 5.4vw, 28px); }
+.hearts .off { opacity: 0.35; filter: grayscale(1); }
+
+/* 시작 · 일시정지 · 게임오버 화면: 화면 위에 뜨는 카드 */
+.overlay {
+  position: absolute;
+  inset: clamp(8px, 2vw, 14px);
+  bottom: auto;
+  aspect-ratio: var(--screen-ratio, 4 / 3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(8px, 2vw, 16px);
+  text-align: center;
+  border-radius: var(--radius);
+  /* 게임 그림은 원래 색 그대로, 안내판(.plate) 바로 뒤만 은은하게 어둡게 */
+  background: radial-gradient(closest-side, rgba(11, 29, 94, 0.35), transparent);
+}
+
+/* 안내판: toon.js가 .overlay 안의 내용을 이 판으로 감싸요 */
+.overlay .plate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(6px, 1.6vw, 12px);
+  max-width: min(100%, 460px);
+  padding: clamp(12px, 2.6vw, 22px) clamp(16px, 3.6vw, 30px);
+  border: var(--line) solid var(--ink);
+  border-radius: 22px;
+  background: linear-gradient(to bottom, #2a4bc0, var(--navy));
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.2), 0 6px 0 var(--ink);
+}
+
+.overlay[hidden] { display: none; }
+
+.overlay h2 {
+  font-size: clamp(30px, 8vw, 56px);
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--sun);
+  text-shadow: var(--outline-big);
+  transform: rotate(-2deg);
+}
+
+/* 안내 화면이 뜰 때 제목이 통통 튀어나와요 */
+.overlay:not([hidden]) h2 { animation: pop-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+
+.overlay p {
+  max-width: 34ch;
+  font-family: "Black Han Sans", "Malgun Gothic", sans-serif;
+  font-size: clamp(15px, 3.6vw, 17px);
+  line-height: 1.55;
+  color: var(--milk);
+  text-shadow: 0 2px 0 rgba(18, 12, 36, 0.7);
+}
+
+.actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-top: 6px; }
+.actions [hidden] { display: none; }
+
+.press { font-size: 14px; letter-spacing: 0.16em; color: var(--mist); text-shadow: var(--outline); }
+
+.blink { animation: blink 1.1s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+
+/* 통통 튀는 등장 (점수 팝업 · 배너에 재사용) */
+@keyframes pop-in {
+  0% { transform: scale(0.4) rotate(-6deg); opacity: 0; }
+  60% { transform: scale(1.12) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-2deg); }
+}
+
+/* 모바일: 터치 기기에서는 키보드 안내 대신 터치 안내만 */
+.touch-only { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .touch-only { display: inline; }
+  .desk-only { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blink { animation: none; }
+  .btn, .btn-ghost { transition: none; }
+  .overlay:not([hidden]) h2 { animation: none; }
+}
+
+@media (max-width: 560px) {
+  :root { --line: 3px; --lip: 5px; --radius: 14px; }
+  .top { flex-wrap: wrap; }
+  .btn-ghost { min-height: 44px; padding: 6px 12px 8px; font-size: 16px; }
+  .btn-ghost span.label { display: none; }
+  .hi { font-size: 15px; padding: 5px 12px 5px 6px; }
+  /* 휴대폰: 안내판을 작게 해서 뒤의 게임 그림이 보이게 */
+  .overlay .plate { gap: 6px; padding: 10px 14px; border-radius: 16px; }
+  .overlay h2 { font-size: clamp(24px, 7vw, 32px); }
+  .overlay .press { display: none; }
+  .overlay .btn { min-height: 44px; font-size: 18px; padding: 7px 18px 9px; }
+  .btn { min-height: 50px; font-size: 20px; padding: 9px 22px 11px; }
+}

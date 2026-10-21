@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>빛의 정원 · Labs</title>
+  <link href="../fonts/pretendard.css" rel="stylesheet">
+  <style>
+    :root { --night: #0c1233; --indigo: #1b2559; --deep: #121a45; --orange: #ff9a3c; --yellow: #ffd66b; --pale: #ffe9a8; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--night); }
+    body { font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', sans-serif; color: var(--pale); word-break: keep-all; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    .back { position: fixed; left: 20px; bottom: 18px; color: rgba(255, 233, 168, 0.55); text-decoration: none; font-size: 14px; }
+    .back:hover { color: var(--pale); }
+    :focus-visible { outline: 2px solid var(--yellow); outline-offset: 4px; }
+    .end {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+      padding: 24px; text-align: center; background: rgba(12, 18, 51, 0.55);
+      opacity: 0; pointer-events: none; transition: opacity 1.2s ease;
+    }
+    .end.on { opacity: 1; pointer-events: auto; }
+    .end p { max-width: 26em; font-size: clamp(18px, 2.4vw, 22px); line-height: 1.6; }
+    .again {
+      padding: 12px 26px; border: 1px solid rgba(255, 214, 107, 0.6); border-radius: 999px;
+      background: transparent; color: var(--yellow); font: inherit; font-size: 16px; cursor: pointer;
+      transition: background 0.3s, color 0.3s;
+    }
+    .again:hover { background: var(--yellow); color: var(--night); }
+  </style>
+</head>
+<body>
+  <canvas id="c" aria-label="빛의 정원: 씨앗을 심어 어둠으로부터 정원을 지키는 게임"></canvas>
+  <a class="back" href="../labs.html">← Labs</a>
+  <div class="end" id="end" aria-live="polite">
+    <p id="msg"></p>
+    <button class="again" id="again" type="button">다시 시작</button>
+  </div>
+
+  <script>
+    // ─────────────────────────────────────────────
+    // 빛의 정원 (Glow Garden) — 시제품 (격자 기반)
+    // 방향키/WASD로 정원사를 한 칸씩 움직이고, 스페이스로 가진 씨앗을 심어요.
+    // 씨앗은 약 3초 뒤 꽃으로 피어 주변 어둠을 밀어내요. 가까이 핀 꽃끼리는 빛이 이어져 보너스.
+    // 어둠이 한가운데 큰 등불에 닿으면 끝.
+    // ─────────────────────────────────────────────
+    const TUNE = {
+      cols: 15, rows: 11,
+      bloom: 3,          // 심고 꽃이 피기까지(초)
+      flowerLife: 24,    // 꽃이 시들기까지(초)
+      reach: 2,          // 꽃 빛이 닿는 거리(칸)
+      seedEvery: 2.2,    // 씨앗이 떠오르는 간격(초)
+      maxSeeds: 4,       // 바닥에 동시에 떠 있는 씨앗 수
+      spreadStart: 1.6,  // 어둠이 번지는 간격(초) — 시간이 갈수록 짧아짐
+      spreadChance: 0.3, // 한 번 번질 때 이웃 칸이 어두워질 확률
+    };
+
+    const cv = document.getElementById("c");
+    const g = cv.getContext("2d");
+    const endEl = document.getElementById("end");
+    const msgEl = document.getElementById("msg");
+    let W = 0, H = 0;
+
+    function resize() {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      W = innerWidth; H = innerHeight;
+      cv.width = W * dpr; cv.height = H * dpr;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    addEventListener("resize", resize);
+    resize();
+
+    const { cols: C, rows: R } = TUNE;
+    const CENTER = { r: Math.floor(R / 2), c: Math.floor(C / 2) };
+    let dark, darkA, gardener, seeds, flowers, carry, score, time, spreadIn, seedIn, state, endT, links, moved;
+
+    function start() {
+      dark = Array.from({ length: R }, (_, r) => Array.from({ length: C }, (_, c) => r === 0 || c === 0 || r === R - 1 || c === C - 1));
+      darkA = dark.map((row) => row.map((d) => (d ? 1 : 0)));
+      gardener = { r: CENTER.r + 1, c: CENTER.c, x: CENTER.c, y: CENTER.r + 1 };
+      seeds = []; flowers = []; links = [];
+      carry = 1; score = 0; time = 0; spreadIn = TUNE.spreadStart; seedIn = 0.5; endT = 0; moved = false;
+      state = "play";
+      endEl.classList.remove("on");
+    }
+
+    const inside = (r, c) => r >= 0 && c >= 0 && r < R && c < C;
+    const near = (a, b, d) => Math.max(Math.abs(a.r - b.r), Math.abs(a.c - b.c)) <= d;
+    const isCenter = (r, c) => r === CENTER.r && c === CENTER.c;
+
+    // 빛이 지켜 주는 칸: 핀 꽃 주변, 정원사 바로 곁
+    function protectedTile(r, c) {
+      if (near({ r, c }, gardener, 1)) return true;
+      return flowers.some((f) => f.bloomed && near(f, { r, c }, TUNE.reach));
+    }
+
+    // ── 입력 ──
+    const DIRS = { ArrowUp: [-1, 0], KeyW: [-1, 0], ArrowDown: [1, 0], KeyS: [1, 0], ArrowLeft: [0, -1], KeyA: [0, -1], ArrowRight: [0, 1], KeyD: [0, 1] };
+    addEventListener("keydown", (e) => {
+      if (state !== "play") return;
+      const d = DIRS[e.code];
+      if (d) {
+        e.preventDefault();
+        const r = gardener.r + d[0], c = gardener.c + d[1];
+        if (inside(r, c) && !isCenter(r, c)) { gardener.r = r; gardener.c = c; moved = true; }
+      }
+      if (e.code === "Space") { e.preventDefault(); plant(); }
+    });
+    document.getElementById("again").addEventListener("click", start);
+
+    function plant() {
+      const { r, c } = gardener;
+      if (carry <= 0 || dark[r][c] || flowers.some((f) => f.r === r && f.c === c)) return;
+      carry--;
+      flowers.push({ r, c, age: 0, bloomed: false, pulse: 0 });
+      moved = true;
+    }
+
+    // ── 갱신 ──
+    function update(dt) {
+      // 정원사는 칸 사이를 부드럽게
+      gardener.x += (gardener.c - gardener.x) * Math.min(1, dt * 16);
+      gardener.y += (gardener.r - gardener.y) * Math.min(1, dt * 16);
+      darkA = darkA.map((row, r) => row.map((a, c) => a + ((dark[r][c] ? 1 : 0) - a) * Math.min(1, dt * 4)));
+
+      if (state === "play") {
+        if (!moved) return;
+        time += dt;
+
+        // 씨앗: 밝은 칸에 별가루처럼 떠올라요. 지나가면 자동으로 주워요
+        seedIn -= dt;
+        if (seedIn <= 0 && seeds.length < TUNE.maxSeeds) {
+          seedIn = TUNE.seedEvery;
+          for (let i = 0; i < 30; i++) {
+            const r = 1 + Math.floor(Math.random() * (R - 2)), c = 1 + Math.floor(Math.random() * (C - 2));
+            if (!dark[r][c] && !isCenter(r, c) && !seeds.some((s) => s.r === r && s.c === c) && !flowers.some((f) => f.r === r && f.c === c)) { seeds.push({ r, c, t: 0 }); break; }
+          }
+        }
+        seeds.forEach((s) => { s.t += dt; if (s.r === gardener.r && s.c === gardener.c) { s.got = true; carry++; } });
+        seeds = seeds.filter((s) => !s.got && !dark[s.r][s.c]);
+
+        // 꽃: 피고, 빛을 내고, 시들어요
+        flowers.forEach((f) => {
+          f.age += dt;
+          f.pulse = Math.max(0, f.pulse - dt);
+          if (dark[f.r][f.c] && !f.bloomed) f.dead = true; // 피기 전에 어둠에 덮이면 사라짐
+          if (!f.bloomed && f.age >= TUNE.bloom) {
+            f.bloomed = true;
+            f.pulse = 1;
+            score++;
+            // 가까이 핀 꽃이 있으면 빛이 이어져 보너스
+            const friends = flowers.filter((o) => o !== f && o.bloomed && !o.dead && near(o, f, TUNE.reach));
+            if (friends.length) { score++; friends.forEach((o) => links.push({ a: f, b: o, t: 1.2 })); }
+            // 핀 자리 주변 어둠을 밀어내요
+            for (let r = f.r - TUNE.reach; r <= f.r + TUNE.reach; r++)
+              for (let c = f.c - TUNE.reach; c <= f.c + TUNE.reach; c++) if (inside(r, c)) dark[r][c] = false;
+          }
+          if (f.bloomed && f.age >= TUNE.bloom + TUNE.flowerLife) f.dead = true;
+        });
+        flowers = flowers.filter((f) => !f.dead);
+        links.forEach((l) => (l.t -= dt));
+        links = links.filter((l) => l.t > 0 && flowers.includes(l.a) && flowers.includes(l.b));
+
+        // 어둠이 번져요: 시간이 갈수록 조금씩 빨라짐
+        spreadIn -= dt;
+        if (spreadIn <= 0) {
+          spreadIn = Math.max(0.55, TUNE.spreadStart - time * 0.012);
+          const next = dark.map((row) => row.slice());
+          for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+            if (dark[r][c] || protectedTile(r, c)) continue;
+            const touching = [[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dr, dc]) => inside(r + dr, c + dc) && dark[r + dr][c + dc]);
+            if (touching && Math.random() < TUNE.spreadChance) next[r][c] = true;
+          }
+          dark = next;
+          if (dark[CENTER.r][CENTER.c]) { state = "end"; endT = 0; }
+        }
+      } else {
+        endT += dt;
+        if (endT > 2 && !endEl.classList.contains("on")) {
+          msgEl.textContent = `어둠이 와도, 당신이 피운 꽃 ${score}송이는 오래 빛났어요.`;
+          endEl.classList.add("on");
+          document.getElementById("again").focus();
+        }
+      }
+    }
+
+    // ── 그리기 ──
+    function glow(x, y, r, color, a) {
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, color.replace("A", a));
+      gr.addColorStop(1, color.replace("A", 0));
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+
+    function draw() {
+      const size = Math.floor(Math.min((W - 60) / C, (H - 130) / R, 58));
+      const x0 = Math.round((W - size * C) / 2), y0 = Math.round((H - size * R) / 2) + 14;
+      const cx = (c) => x0 + c * size + size / 2, cy = (r) => y0 + r * size + size / 2;
+      const t = performance.now() / 1000;
+
+      g.fillStyle = "#0c1233";
+      g.fillRect(0, 0, W, H);
+
+      // 땅
+      for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+        g.fillStyle = (r + c) % 2 ? "#1b2559" : "#1e285f";
+        g.fillRect(x0 + c * size, y0 + r * size, size, size);
+      }
+
+      // 꽃이 핀 자리는 따뜻한 노랑으로 물들어요
+      flowers.forEach((f) => {
+        if (!f.bloomed) return;
+        const life = 1 - Math.max(0, f.age - TUNE.bloom - TUNE.flowerLife + 4) / 4; // 시들기 직전 흐려짐
+        glow(cx(f.c), cy(f.r), size * (TUNE.reach + 0.8), "rgba(255, 214, 107, A)", 0.28 * life);
+      });
+
+      // 큰 등불 (정원 한가운데)
+      const nearDark = (() => { let n = 0, all = 0; for (let r = CENTER.r - 3; r <= CENTER.r + 3; r++) for (let c = CENTER.c - 3; c <= CENTER.c + 3; c++) if (inside(r, c)) { all++; if (dark[r][c]) n++; } return n / all; })();
+      let lampK = 1 - nearDark;
+      if (state === "end") lampK *= Math.max(0, 1 - endT / 1.6);
+      glow(cx(CENTER.c), cy(CENTER.r), size * 3.2, "rgba(255, 214, 107, A)", 0.35 * lampK);
+      g.fillStyle = lampK > 0.05 ? "#ffe9a8" : "#3a457f";
+      g.fillRect(cx(CENTER.c) - size * 0.14, cy(CENTER.r) - size * 0.26, size * 0.28, size * 0.44);
+      g.fillStyle = "#ffd66b";
+      g.fillRect(cx(CENTER.c) - size * 0.2, cy(CENTER.r) - size * 0.32, size * 0.4, size * 0.08);
+      g.fillRect(cx(CENTER.c) - size * 0.2, cy(CENTER.r) + size * 0.16, size * 0.4, size * 0.08);
+
+      // 이어진 꽃 사이의 빛줄기
+      links.forEach((l) => {
+        g.strokeStyle = `rgba(255, 233, 168, ${Math.min(1, l.t) * 0.7})`;
+        g.lineWidth = 2;
+        g.beginPath(); g.moveTo(cx(l.a.c), cy(l.a.r)); g.lineTo(cx(l.b.c), cy(l.b.r)); g.stroke();
+      });
+
+      // 씨앗 (별가루)
+      seeds.forEach((s) => {
+        const tw = 0.6 + Math.sin(s.t * 5) * 0.4;
+        glow(cx(s.c), cy(s.r), size * 0.4, "rgba(255, 233, 168, A)", 0.5 * tw);
+        g.fillStyle = `rgba(255, 233, 168, ${0.6 + tw * 0.4})`;
+        g.fillRect(cx(s.c) - 2, cy(s.r) - 2, 4, 4);
+      });
+
+      // 꽃: 새싹 → 개화
+      flowers.forEach((f) => {
+        const x = cx(f.c), y = cy(f.r);
+        if (!f.bloomed) {
+          const k = f.age / TUNE.bloom;
+          g.strokeStyle = "#8fd18a"; g.lineWidth = 2;
+          g.beginPath(); g.moveTo(x, y + size * 0.2); g.lineTo(x, y + size * 0.2 - size * 0.3 * k); g.stroke();
+          g.fillStyle = "#ffd66b";
+          g.beginPath(); g.arc(x, y + size * 0.2 - size * 0.3 * k, 2 + k * 2, 0, Math.PI * 2); g.fill();
+        } else {
+          const p = 1 + f.pulse * 0.4;
+          g.fillStyle = "#ffd66b";
+          for (let i = 0; i < 5; i++) {
+            const an = (i / 5) * Math.PI * 2 + t * 0.3;
+            g.beginPath(); g.arc(x + Math.cos(an) * size * 0.14 * p, y + Math.sin(an) * size * 0.14 * p, size * 0.1 * p, 0, Math.PI * 2); g.fill();
+          }
+          g.fillStyle = "#ff9a3c";
+          g.beginPath(); g.arc(x, y, size * 0.08 * p, 0, Math.PI * 2); g.fill();
+        }
+      });
+
+      // 어둠 (짙은 안개)
+      for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+        const a = darkA[r][c];
+        if (a < 0.02) continue;
+        g.fillStyle = `rgba(7, 10, 34, ${a * (0.86 + Math.sin(t * 1.5 + r + c) * 0.06)})`;
+        g.fillRect(x0 + c * size - 1, y0 + r * size - 1, size + 2, size + 2);
+      }
+
+      // 정원사 (주황 등불을 든 작은 사람)
+      const gx = x0 + gardener.x * size + size / 2, gy = y0 + gardener.y * size + size / 2;
+      glow(gx + size * 0.18, gy, size * 1.4, "rgba(255, 154, 60, A)", 0.25);
+      g.fillStyle = "#ffe9a8";
+      g.beginPath(); g.arc(gx, gy - size * 0.18, size * 0.11, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.moveTo(gx - size * 0.14, gy + size * 0.24); g.lineTo(gx, gy - size * 0.08); g.lineTo(gx + size * 0.14, gy + size * 0.24); g.closePath(); g.fill();
+      g.fillStyle = "#ff9a3c";
+      g.beginPath(); g.arc(gx + size * 0.2, gy + size * 0.04, size * 0.07, 0, Math.PI * 2); g.fill();
+      // 가진 씨앗: 정원사 위의 작은 점
+      for (let i = 0; i < Math.min(carry, 6); i++) {
+        g.fillStyle = "#ffe9a8";
+        g.fillRect(gx - (Math.min(carry, 6) * 6) / 2 + i * 6, gy - size * 0.46, 3, 3);
+      }
+
+      // HUD: 왼쪽 위 피운 꽃 수, 오른쪽 위 정원 등불 상태
+      g.font = "600 18px 'Pretendard Variable', sans-serif";
+      g.textAlign = "left";
+      g.fillStyle = "#ffd66b";
+      for (let i = 0; i < 5; i++) { const an = (i / 5) * Math.PI * 2; g.beginPath(); g.arc(30 + Math.cos(an) * 5, 32 + Math.sin(an) * 5, 4, 0, Math.PI * 2); g.fill(); }
+      g.fillStyle = "#ffe9a8";
+      g.fillText(String(score), 46, 38);
+      const bw = 120, bx = W - bw - 24, by = 28;
+      g.fillStyle = "rgba(255, 233, 168, 0.15)";
+      g.fillRect(bx, by, bw, 8);
+      g.fillStyle = lampK > 0.4 ? "#ffd66b" : "#ff9a3c";
+      g.fillRect(bx, by, bw * lampK, 8);
+
+      if (!moved && state === "play") {
+        g.textAlign = "center";
+        g.font = "15px 'Pretendard Variable', sans-serif";
+        g.fillStyle = "rgba(255, 233, 168, 0.75)";
+        g.fillText("방향키로 걷고, 스페이스로 씨앗을 심어요", W / 2, y0 - 14);
+      }
+    }
+
+    let last = 0;
+    function frame(ts) {
+      const dt = Math.min(0.05, last ? (ts - last) / 1000 : 0.016);
+      last = ts;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    start();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

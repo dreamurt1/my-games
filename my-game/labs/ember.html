@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>불씨 · Labs</title>
+  <link href="../fonts/pretendard.css" rel="stylesheet">
+  <style>
+    :root { --night: #0c1233; --indigo: #1b2559; --deep: #121a45; --orange: #ff9a3c; --yellow: #ffd66b; --pale: #ffe9a8; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--deep); }
+    body { font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', sans-serif; color: var(--pale); word-break: keep-all; }
+    canvas { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: none; }
+    .back { position: fixed; left: 20px; bottom: 18px; color: rgba(255, 233, 168, 0.55); text-decoration: none; font-size: 14px; }
+    .back:hover { color: var(--pale); }
+    :focus-visible { outline: 2px solid var(--yellow); outline-offset: 4px; }
+
+    .end {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      padding: 24px;
+      text-align: center;
+      background: rgba(12, 18, 51, 0.55);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.2s ease;
+    }
+
+    .end.on { opacity: 1; pointer-events: auto; }
+    .end p { max-width: 26em; font-size: clamp(18px, 2.4vw, 22px); line-height: 1.6; }
+
+    .again {
+      padding: 12px 26px;
+      border: 1px solid rgba(255, 214, 107, 0.6);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--yellow);
+      font: inherit;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .again:hover { background: var(--yellow); color: var(--night); }
+  </style>
+</head>
+<body>
+  <canvas id="c" aria-label="불씨: 꺼진 등불을 밝히는 게임"></canvas>
+  <a class="back" href="../labs.html">← Labs</a>
+  <div class="end" id="end" aria-live="polite">
+    <p id="msg"></p>
+    <button class="again" id="again" type="button">다시 한 번</button>
+  </div>
+
+  <script>
+    // ─────────────────────────────────────────────
+    // 불씨 (Little Ember) — 시제품
+    // 불씨가 포인터를 따라오고, 꺼진 등불 곁에 잠깐 머물면 등불이 켜져요.
+    // 온기는 시간이 지나거나 어둠 안개에 닿으면 줄고, 등불을 켜면 다시 차요.
+    // ─────────────────────────────────────────────
+    // 시제품용 임시값 (game-ideas.md에서 '미정'이던 것들) — 바꿔 보며 느낌을 비교해요
+    const TUNE = {
+      dwell: 0.6,          // 등불을 켜는 데 머물러야 하는 시간(초)
+      reach: 40,           // 등불과 이만큼 가까워야 켜져요(px)
+      drain: 3,            // 온기가 1초에 줄어드는 양 (시간이 갈수록 조금씩 빨라짐)
+      fogDrain: 22,        // 어둠 안개에 닿아 있는 동안 1초에 줄어드는 온기
+      gain: 15,            // 등불 하나 켤 때 채워지는 온기
+      comboTime: 2.5,      // 이 시간 안에 다음 등불을 켜면 연속 보너스
+      unlit: 6,            // 화면에 꺼진 등불이 항상 이만큼 (배치: 무작위)
+    };
+
+    const cv = document.getElementById("c");
+    const g = cv.getContext("2d");
+    const endEl = document.getElementById("end");
+    const msgEl = document.getElementById("msg");
+    let W = 0, H = 0, DPR = 1;
+
+    function resize() {
+      DPR = Math.min(2, window.devicePixelRatio || 1);
+      W = innerWidth; H = innerHeight;
+      cv.width = W * DPR; cv.height = H * DPR;
+      g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+    addEventListener("resize", resize);
+    resize();
+
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    let ember, lanterns, fogs, sparks, pops, warmth, score, time, lastLit, state, moved, endT;
+    let showHint = true;
+    try { showHint = !localStorage.getItem("labs-ember-seen"); } catch (e) {}
+
+    function spot() {
+      for (let i = 0; i < 80; i++) {
+        const p = { x: rnd(70, W - 70), y: rnd(90, H - 70) };
+        if (lanterns.every((l) => dist(l, p) > 90) && dist(ember, p) > 120) return p;
+      }
+      return { x: rnd(70, W - 70), y: rnd(90, H - 70) };
+    }
+
+    function addLantern() {
+      const p = spot();
+      lanterns.push({ x: p.x, y: p.y, lit: false, dwell: 0, glow: 0 });
+    }
+
+    function addFog() {
+      const r = rnd(42, 72);
+      const side = Math.floor(Math.random() * 4);
+      fogs.push({
+        x: side === 0 ? -r : side === 1 ? W + r : rnd(0, W),
+        y: side === 2 ? -r : side === 3 ? H + r : rnd(0, H),
+        r, vx: rnd(-18, 18), vy: rnd(-18, 18), ph: Math.random() * 6,
+      });
+    }
+
+    function start() {
+      ember = { x: W / 2, y: H / 2, tx: W / 2, ty: H / 2, r: 7 };
+      lanterns = []; fogs = []; sparks = []; pops = [];
+      warmth = 100; score = 0; time = 0; lastLit = -99; moved = false; endT = 0;
+      for (let i = 0; i < TUNE.unlit; i++) addLantern();
+      for (let i = 0; i < 3; i++) addFog();
+      state = "play";
+      endEl.classList.remove("on");
+    }
+
+    // ── 입력: 포인터를 따라와요 ──
+    const aim = (e) => { ember.tx = e.clientX; ember.ty = e.clientY; moved = true; };
+    cv.addEventListener("pointermove", aim);
+    cv.addEventListener("pointerdown", aim);
+    document.getElementById("again").addEventListener("click", start);
+
+    // ── 갱신 ──
+    function update(dt) {
+      if (state === "play") {
+        time += dt;
+        // 불씨: 포인터를 부드럽게 따라옴
+        ember.x += (ember.tx - ember.x) * Math.min(1, dt * 6);
+        ember.y += (ember.ty - ember.y) * Math.min(1, dt * 6);
+        if (Math.random() < dt * 40) sparks.push({ x: ember.x + rnd(-3, 3), y: ember.y + rnd(-3, 3), vx: rnd(-10, 10), vy: rnd(-25, -5), life: 1 });
+
+        if (moved) {
+          // 온기: 시간이 지날수록 조금씩 빨리 줄어요
+          warmth -= (TUNE.drain + time * 0.02) * dt;
+          // 어둠 안개
+          fogs.forEach((f) => {
+            f.ph += dt;
+            f.x += f.vx * dt; f.y += f.vy * dt;
+            if (f.x < -f.r * 2 || f.x > W + f.r * 2) f.vx *= -1;
+            if (f.y < -f.r * 2 || f.y > H + f.r * 2) f.vy *= -1;
+            if (dist(f, ember) < f.r * 0.8) warmth -= TUNE.fogDrain * dt;
+          });
+          const want = Math.min(8, 3 + Math.floor(score / 5));
+          if (fogs.length < want) addFog();
+
+          // 등불 켜기: 곁에 잠깐 머물면
+          lanterns.forEach((l) => {
+            if (l.lit) { l.glow = Math.min(1, l.glow + dt * 1.5); return; }
+            if (dist(l, ember) < TUNE.reach) l.dwell += dt;
+            else l.dwell = Math.max(0, l.dwell - dt * 2);
+            if (l.dwell >= TUNE.dwell) {
+              l.lit = true;
+              let gain = 1;
+              if (time - lastLit < TUNE.comboTime) gain = 2; // 연속 보너스
+              lastLit = time;
+              score += gain;
+              warmth = Math.min(100, warmth + TUNE.gain);
+              pops.push({ x: l.x, y: l.y - 22, text: gain > 1 ? "+2" : "+1", life: 1 });
+              if (showHint) { showHint = false; try { localStorage.setItem("labs-ember-seen", "1"); } catch (e) {} }
+              addLantern();
+            }
+          });
+        }
+
+        if (warmth <= 0) { warmth = 0; state = "rise"; endT = 0; }
+      } else if (state === "rise") {
+        // 끝: 불씨가 작은 별이 되어 하늘로
+        endT += dt;
+        ember.y -= (60 + endT * 140) * dt;
+        ember.r = Math.max(1.5, 7 - endT * 3);
+        if (endT > 1.6 && !endEl.classList.contains("on")) {
+          msgEl.textContent = `당신이 밝힌 빛 ${score}개, 누군가의 밤이 따뜻해졌어요.`;
+          endEl.classList.add("on");
+          document.getElementById("again").focus();
+        }
+      }
+
+      sparks.forEach((s) => { s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt * 1.6; });
+      sparks = sparks.filter((s) => s.life > 0);
+      pops.forEach((p) => { p.y -= 20 * dt; p.life -= dt; });
+      pops = pops.filter((p) => p.life > 0);
+    }
+
+    // ── 그리기 ──
+    function glow(x, y, r, color, a) {
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, color.replace("A", a));
+      gr.addColorStop(1, color.replace("A", 0));
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+
+    function draw() {
+      // 배경: 켠 등불이 많을수록 따뜻해져요
+      const lit = lanterns.filter((l) => l.lit).length;
+      const warm = Math.min(1, lit / 30);
+      g.fillStyle = "#121a45";
+      g.fillRect(0, 0, W, H);
+      g.fillStyle = `rgba(255, 214, 107, ${warm * 0.14})`;
+      g.fillRect(0, 0, W, H);
+
+      // 켜진 등불의 빛
+      lanterns.forEach((l) => { if (l.lit) glow(l.x, l.y, 150 * l.glow, "rgba(255, 214, 107, A)", 0.22); });
+
+      // 어둠 안개
+      fogs.forEach((f) => {
+        const r = f.r * (1 + Math.sin(f.ph) * 0.06);
+        glow(f.x, f.y, r * 1.3, "rgba(8, 11, 36, A)", 0.85);
+      });
+
+      // 등불
+      lanterns.forEach((l) => {
+        if (l.lit) {
+          glow(l.x, l.y, 28, "rgba(255, 233, 168, A)", 0.9);
+          g.fillStyle = "#ffe9a8";
+          g.beginPath(); g.arc(l.x, l.y, 7, 0, Math.PI * 2); g.fill();
+        } else {
+          g.fillStyle = "#2a3470";
+          g.beginPath(); g.arc(l.x, l.y, 9, 0, Math.PI * 2); g.fill();
+          g.strokeStyle = "rgba(255, 233, 168, 0.18)";
+          g.lineWidth = 1.5;
+          g.stroke();
+          // 머무는 동안 차오르는 고리
+          if (l.dwell > 0) {
+            g.strokeStyle = "#ffd66b";
+            g.lineWidth = 2.5;
+            g.beginPath(); g.arc(l.x, l.y, 15, -Math.PI / 2, -Math.PI / 2 + (l.dwell / TUNE.dwell) * Math.PI * 2); g.stroke();
+          }
+          // 첫 플레이 힌트: 점선 원
+          if (showHint) {
+            g.setLineDash([3, 5]);
+            g.strokeStyle = "rgba(255, 233, 168, 0.35)";
+            g.lineWidth = 1;
+            g.beginPath(); g.arc(l.x, l.y, TUNE.reach, 0, Math.PI * 2); g.stroke();
+            g.setLineDash([]);
+          }
+        }
+      });
+
+      // 불티
+      sparks.forEach((s) => {
+        g.fillStyle = `rgba(255, 154, 60, ${s.life * 0.8})`;
+        g.fillRect(s.x, s.y, 2, 2);
+      });
+
+      // 불씨
+      const fl = 1 + Math.sin(performance.now() / 90) * 0.08;
+      glow(ember.x, ember.y, 70 * fl * (ember.r / 7), "rgba(255, 154, 60, A)", 0.35);
+      g.fillStyle = state === "rise" ? "#ffe9a8" : "#ff9a3c";
+      g.beginPath(); g.arc(ember.x, ember.y, ember.r * fl, 0, Math.PI * 2); g.fill();
+
+      // +1 표시
+      g.font = "600 16px 'Pretendard Variable', sans-serif";
+      g.textAlign = "center";
+      pops.forEach((p) => { g.fillStyle = `rgba(255, 214, 107, ${p.life})`; g.fillText(p.text, p.x, p.y); });
+
+      // HUD: 왼쪽 위 켠 등불 수, 오른쪽 위 온기 게이지
+      g.textAlign = "left";
+      glow(30, 32, 14, "rgba(255, 214, 107, A)", 0.8);
+      g.fillStyle = "#ffe9a8";
+      g.beginPath(); g.arc(30, 32, 5, 0, Math.PI * 2); g.fill();
+      g.font = "600 18px 'Pretendard Variable', sans-serif";
+      g.fillText(String(score), 46, 38);
+      const bw = 140, bx = W - bw - 24, by = 27;
+      g.fillStyle = "rgba(255, 233, 168, 0.15)";
+      g.fillRect(bx, by, bw, 8);
+      g.fillStyle = warmth > 30 ? "#ffd66b" : "#ff9a3c";
+      g.fillRect(bx, by, bw * warmth / 100, 8);
+
+      if (!moved && state === "play") {
+        g.textAlign = "center";
+        g.font = "15px 'Pretendard Variable', sans-serif";
+        g.fillStyle = "rgba(255, 233, 168, 0.7)";
+        g.fillText("화면 위에서 움직여 보세요", W / 2, H / 2 + 60);
+      }
+    }
+
+    let last = 0;
+    function frame(t) {
+      const dt = Math.min(0.05, last ? (t - last) / 1000 : 0.016);
+      last = t;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    start();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

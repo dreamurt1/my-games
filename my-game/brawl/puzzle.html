@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ryan-portfolio · puzzle (brawl)</title>
+  <!-- 브롤 스타일 글꼴: Lilita One + Black Han Sans (OFL, 출처는 CREDITS.md) -->
+  <link href="../fonts/brawl-fonts.css" rel="stylesheet">
+  <link href="brawl.css" rel="stylesheet">
+  <style>
+    .board { max-width: 960px; padding: clamp(10px, 3vw, 28px); }
+
+    /* 방(5×5)과 고양이 대기 구역이 함께 들어 있는 무대 */
+    .stage { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+
+    /* 방: 사탕 타일 바닥 + 두꺼운 잉크 테두리 (테두리는 그림자로 그려서 칸 계산이 그대로예요) */
+    .room {
+      position: absolute;
+      top: 0;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #f4c27a;
+      box-shadow: 0 0 0 5px var(--ink), 0 11px 0 var(--ink);
+    }
+    .room span { box-shadow: inset 0 0 0 1.5px rgba(18, 12, 36, 0.14), inset 0 -5px 0 rgba(160, 82, 20, 0.16), inset 0 4px 0 rgba(255, 255, 255, 0.35); }
+    .room .tile-a { background: #fff0d2; }
+    .room .tile-b { background: #ffd9a3; }
+
+    .piece, .shadow { position: absolute; touch-action: none; }
+    .piece { cursor: grab; filter: drop-shadow(0 4px 0 rgba(18, 12, 36, 0.55)); transition: filter 0.15s ease-out; }
+    .piece svg, .shadow svg { display: block; width: 100%; height: 100%; overflow: visible; }
+    .piece:hover { filter: drop-shadow(0 4px 0 rgba(18, 12, 36, 0.55)) brightness(1.06); }
+    .piece.is-drag { cursor: grabbing; z-index: 10; filter: drop-shadow(0 14px 6px rgba(18, 12, 36, 0.45)); }
+    .piece.is-placed { filter: drop-shadow(0 2px 0 rgba(18, 12, 36, 0.35)); }
+    .stage.is-locked .piece { pointer-events: none; }
+
+    /* 고양이 표정: 평소엔 가끔 깜빡, 잡으면 행복, 방에 들어가면 하트 눈 */
+    .piece .m-blink, .piece .m-happy, .piece .m-love, .shadow .m-blink, .shadow .m-happy, .shadow .m-love { opacity: 0; }
+    .piece .m-open { animation: eye-open 4.4s infinite var(--d, 0s); }
+    .piece .m-blink { animation: eye-shut 4.4s infinite var(--d, 0s); }
+    @keyframes eye-open { 0%, 91%, 100% { opacity: 1; } 93%, 97% { opacity: 0; } }
+    @keyframes eye-shut { 0%, 91%, 100% { opacity: 0; } 93%, 97% { opacity: 1; } }
+    .piece.is-drag .m-open, .piece.is-drag .m-blink, .piece.is-placed .m-open, .piece.is-placed .m-blink { animation: none; opacity: 0; }
+    .piece.is-drag .m-happy { opacity: 1; }
+    .piece.is-placed .m-love { opacity: 1; }
+
+    /* 놓을 수 있는 자리 미리보기 */
+    .shadow { opacity: 0.45; pointer-events: none; z-index: 1; }
+    .shadow[hidden] { display: none; }
+
+    .overlay { aspect-ratio: auto; bottom: clamp(8px, 2vw, 14px); z-index: 20; }
+    .overlay.is-win h2 { animation: pop-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+    .hud { flex-wrap: wrap; padding-top: 22px; }
+    .hud-btns { display: flex; gap: 10px; }
+
+    /* 클리어 색종이 */
+    .confetti { position: absolute; inset: 0; z-index: 25; overflow: hidden; pointer-events: none; border-radius: calc(var(--radius) + 2px); }
+    .confetti span {
+      position: absolute;
+      top: -18px;
+      width: 11px;
+      height: 15px;
+      border: 2px solid var(--ink);
+      border-radius: 3px;
+      animation: confetti-fall 1.7s cubic-bezier(0.25, 0.6, 0.45, 1) forwards;
+    }
+    @keyframes confetti-fall {
+      to { transform: translate(var(--x), var(--fall)) rotate(var(--rot)); opacity: 0.9; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .piece .m-open, .piece .m-blink { animation: none; }
+      .piece .m-blink { opacity: 0; }
+      .overlay.is-win h2 { animation: none; }
+      .confetti { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="arcade.html" id="backLink"><span data-icon="back"></span><span class="label">Back</span></a>
+      <div class="top-right">
+        <span class="hi"><span data-icon="puzzle"></span>CLEAR <span id="best">0</span>/<span id="total">3</span></span>
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <h1 class="band">PUZZLE</h1>
+    <p class="how">여러 모양의 고양이들을 끌어다 5×5 방에 빈틈없이 채워요.<br><span class="touch-only">조각을 짧게 톡 누르면 90° 돌아가요.</span><span class="desk-only">조각을 짧게 누르면 90° 돌아가요. 끌고 있는 동안 R 키로도 돌릴 수 있어요.</span></p>
+
+    <main class="board" id="board">
+      <div class="stage" id="stage" aria-label="고양이 조각 퍼즐">
+        <div class="room" id="room"></div>
+        <div class="shadow" id="shadow" hidden></div>
+      </div>
+      <div class="hud">
+        <span class="chip">Level <span class="num" id="level">1</span>/<span id="levelTotal">3</span></span>
+        <span class="hud-btns">
+          <button class="btn-ghost" id="newBtn" type="button">New</button>
+          <button class="btn-ghost" id="resetBtn" type="button">Reset</button>
+        </span>
+      </div>
+
+      <div class="overlay" id="overlay">
+        <h2 id="overlayTitle">Cat Puzzle</h2>
+        <p id="overlayText">모양이 제각각인 고양이들을 방 안에 꼭 맞게 정리해 주세요.</p>
+        <div class="actions">
+          <button class="btn go" id="playBtn" type="button">Play</button>
+        </div>
+        <p class="press blink desk-only">PRESS ENTER</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="../retro.js"></script>
+  <!-- CC0 고양이 녹음 (출처: CREDITS.md) -->
+  <script src="../sounds/cat-sounds.js"></script>
+  <script src="toon.js"></script>
+  <script>
+    Toon.icons();
+    Toon.mountMute(document.getElementById("soundBtn"));
+    Retro.addSample("mew", CAT_AUDIO.mew);
+    Retro.addSample("purr", CAT_AUDIO.purr);
+
+    // 뒤로 가기: arcade.html에서 왔다면 브라우저 기록으로 되돌아가요
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /arcade\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    // ── 레벨: 판마다 5×5 방을 무작위로 나눠서 새 퍼즐을 만들어요 ──
+    // 방을 먼저 빈틈없이 나눈 다음 조각으로 흩어 놓기 때문에, 어떤 퍼즐이든 항상 풀 수 있어요.
+    // 레벨이 올라갈수록 고양이 수가 늘어나요 (5 → 6 → 7마리)
+    const N = 5;
+    const LEVEL_CATS = [5, 6, 7];
+    const LEVEL_COUNT = LEVEL_CATS.length;
+
+    // 고양이 k마리의 크기: 각각 2~6칸, 합이 25칸
+    function randomSizes(k) {
+      const sizes = Array(k).fill(2);
+      let left = N * N - 2 * k;
+      while (left > 0) {
+        const i = Math.floor(Math.random() * k);
+        if (sizes[i] < 6) { sizes[i]++; left--; }
+      }
+      return sizes.sort((a, b) => b - a); // 큰 고양이부터 놓아야 잘 나뉘어요
+    }
+
+    // 5×5 방을 고양이 k마리로 나눈 그림 (같은 글자 = 한 마리)
+    function makeLevel(k) {
+      const nb = (c) => [c - N, c + N, c % N ? c - 1 : -1, c % N < N - 1 ? c + 1 : -1].filter((x) => x >= 0 && x < N * N);
+      for (let tries = 0; tries < 2000; tries++) {
+        const grid = Array(N * N).fill(-1);
+        let ok = true;
+        randomSizes(k).forEach((size, id) => {
+          if (!ok) return;
+          const free = grid.map((v, c) => (v < 0 ? c : -1)).filter((c) => c >= 0);
+          // 빈 이웃이 가장 적은 칸(구석)부터 채워야 외톨이 칸이 안 생겨요
+          const tight = (c) => nb(c).filter((x) => grid[x] < 0).length;
+          const least = Math.min(...free.map(tight));
+          const starts = free.filter((c) => tight(c) === least);
+          const region = [starts[Math.floor(Math.random() * starts.length)]];
+          grid[region[0]] = id;
+          while (region.length < size) {
+            const edge = [...new Set(region.flatMap(nb))].filter((x) => grid[x] < 0);
+            if (!edge.length) { ok = false; return; }
+            const c = edge[Math.floor(Math.random() * edge.length)];
+            grid[c] = id;
+            region.push(c);
+          }
+        });
+        if (ok && grid.every((v) => v >= 0)) {
+          return Array.from({ length: N }, (_, r) => grid.slice(r * N, r * N + N).map((v) => "ABCDEFG"[v]).join(""));
+        }
+      }
+      return ["AAABB", "ACCBB", "ACCDB", "EEDDD", "EEEED"]; // 만약을 위한 기본 퍼즐
+    }
+
+    const TC = Toon.C;
+    // 고양이 털색: 사탕 색 7가지 (그림자 색은 자동으로 조금 어둡게)
+    const COATS = [TC.cat, TC.grapeHi, TC.sun, TC.berry, TC.skyHi, TC.leaf, "#d7d0f0"].map((m) => ({ m, s: Toon.tint(m, -0.25) }));
+    const U = 16; // 칸 하나 = 그림 단위 16
+
+    const stage = document.getElementById("stage");
+    const board = document.getElementById("board");
+    const room = document.getElementById("room");
+    const shadow = document.getElementById("shadow");
+    const levelEl = document.getElementById("level");
+    const bestEl = document.getElementById("best");
+    const overlay = document.getElementById("overlay");
+    const overlayTitle = document.getElementById("overlayTitle");
+    const overlayText = document.getElementById("overlayText");
+    const playBtn = document.getElementById("playBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    document.getElementById("total").textContent = LEVEL_COUNT;
+    document.getElementById("levelTotal").textContent = LEVEL_COUNT;
+    // 바닥 타일: 체크무늬
+    for (let i = 0; i < N * N; i++) {
+      const tile = document.createElement("span");
+      tile.className = (Math.floor(i / N) + (i % N)) % 2 ? "tile-b" : "tile-a";
+      room.appendChild(tile);
+    }
+
+    let cleared = 0;
+    try { cleared = Math.min(LEVEL_COUNT, Number(localStorage.getItem("puzzle-clear")) || 0); } catch (e) {}
+    bestEl.textContent = cleared;
+
+    let level = 0, pieces = [], cell = 60, roomX = 0, playing = false;
+
+    // 레벨 그림 → 조각 목록 (각 조각은 [행, 열] 칸들의 모음)
+    function buildPieces(map) {
+      const groups = {};
+      map.forEach((row, r) => [...row].forEach((ch, c) => (groups[ch] ||= []).push([r, c])));
+      return Object.values(groups).map((cells, i) => ({
+        cells: normalize(cells),
+        head: 0,                      // 얼굴이 그려지는 칸
+        tail: cells.length - 1,       // 꼬리가 달린 칸
+        coat: COATS[i % COATS.length],
+        at: null,                     // 방 안 위치 [행, 열] (없으면 대기 구역)
+        el: null,
+      }));
+    }
+
+    function normalize(cells) {
+      const r0 = Math.min(...cells.map((p) => p[0]));
+      const c0 = Math.min(...cells.map((p) => p[1]));
+      return cells.map(([r, c]) => [r - r0, c - c0]);
+    }
+
+    // 시계 방향 90° 회전 (칸 순서를 유지해서 얼굴·꼬리 위치도 따라 돌아요)
+    function rotate(p) {
+      p.cells = normalize(p.cells.map(([r, c]) => [c, -r]));
+    }
+
+    const size = (p) => [Math.max(...p.cells.map((q) => q[0])) + 1, Math.max(...p.cells.map((q) => q[1])) + 1];
+
+    function occupied(except) {
+      const grid = Array.from({ length: N }, () => Array(N).fill(false));
+      pieces.forEach((p) => {
+        if (p === except || !p.at) return;
+        p.cells.forEach(([r, c]) => (grid[p.at[0] + r][p.at[1] + c] = true));
+      });
+      return grid;
+    }
+
+    function fits(p, r0, c0) {
+      const grid = occupied(p);
+      return p.cells.every(([r, c]) => {
+        const rr = r0 + r, cc = c0 + c;
+        return rr >= 0 && rr < N && cc >= 0 && cc < N && !grid[rr][cc];
+      });
+    }
+
+    // ── 만화 고양이 조각 (SVG) ──
+    const f = (n) => +n.toFixed(2);
+    const INK = TC.ink;
+
+    // 고양이 얼굴: Toon.cat과 같은 모양을 SVG로 (cx, cy = 가운데, s = 너비)
+    //  눈은 표정 4가지를 모두 그려 두고 CSS로 하나만 보여줘요 (평소 · 깜빡 · 행복 · 하트)
+    function faceSVG(cx, cy, s, coat) {
+      const w = s, h = s * 0.82, x = cx - w / 2, y = cy - h / 2, line = Math.max(0.9, s * 0.075);
+      const lo = Toon.tint(coat, -0.22);
+      let o = "";
+      // 귀
+      [-1, 1].forEach((d) => {
+        const ex = cx + d * w * 0.3;
+        o += `<path d="M${f(ex - d * w * 0.2)} ${f(y + h * 0.26)}Q${f(ex + d * w * 0.06)} ${f(y - h * 0.42)} ${f(ex + d * w * 0.17)} ${f(y - h * 0.16)}Q${f(ex + d * w * 0.2)} ${f(y + h * 0.08)} ${f(ex + d * w * 0.16)} ${f(y + h * 0.3)}Z" fill="${coat}" stroke="${INK}" stroke-width="${f(line)}" stroke-linejoin="round"/>`;
+        o += `<path d="M${f(ex - d * w * 0.08)} ${f(y + h * 0.18)}Q${f(ex + d * w * 0.06)} ${f(y - h * 0.22)} ${f(ex + d * w * 0.11)} ${f(y - h * 0.04)}Q${f(ex + d * w * 0.12)} ${f(y + h * 0.12)} ${f(ex + d * w * 0.08)} ${f(y + h * 0.24)}Z" fill="${TC.pink}"/>`;
+      });
+      // 머리 (찹쌀떡 모양)
+      const head = `M${f(cx)} ${f(y)}C${f(x + w * 0.92)} ${f(y)} ${f(x + w * 1.02)} ${f(y + h * 0.45)} ${f(x + w)} ${f(y + h * 0.62)}C${f(x + w * 0.98)} ${f(y + h * 0.98)} ${f(x + w * 0.7)} ${f(y + h)} ${f(cx)} ${f(y + h)}C${f(x + w * 0.3)} ${f(y + h)} ${f(x + w * 0.02)} ${f(y + h * 0.98)} ${f(x)} ${f(y + h * 0.62)}C${f(x - w * 0.02)} ${f(y + h * 0.45)} ${f(x + w * 0.08)} ${f(y)} ${f(cx)} ${f(y)}Z`;
+      const id = "h" + Math.random().toString(36).slice(2, 8);
+      o += `<clipPath id="${id}"><path d="${head}"/></clipPath><path d="${head}" fill="${coat}"/>`;
+      o += `<g clip-path="url(#${id})">`;
+      o += `<ellipse cx="${f(cx)}" cy="${f(y + h * 1.18)}" rx="${f(w * 0.7)}" ry="${f(h * 0.42)}" fill="${lo}"/>`;
+      o += `<ellipse cx="${f(cx - w * 0.12)}" cy="${f(y + h * 0.16)}" rx="${f(w * 0.26)}" ry="${f(h * 0.09)}" fill="#fff" fill-opacity=".35" transform="rotate(-11 ${f(cx - w * 0.12)} ${f(y + h * 0.16)})"/>`;
+      [-0.1, 0, 0.1].forEach((d) => { o += `<path d="M${f(cx + d * w)} ${f(y + h * 0.05)}L${f(cx + d * w * 0.8)} ${f(y + h * 0.2)}" stroke="${lo}" stroke-width="${f(line * 0.9)}" stroke-linecap="round"/>`; });
+      o += `<ellipse cx="${f(cx)}" cy="${f(y + h * 0.74)}" rx="${f(w * 0.25)}" ry="${f(h * 0.19)}" fill="${TC.cream}"/></g>`;
+      o += `<path d="${head}" fill="none" stroke="${INK}" stroke-width="${f(line)}" stroke-linejoin="round"/>`;
+      // 볼 터치
+      [-1, 1].forEach((d) => { o += `<ellipse cx="${f(cx + d * w * 0.31)}" cy="${f(y + h * 0.66)}" rx="${f(w * 0.09)}" ry="${f(h * 0.055)}" fill="#ff6f91" fill-opacity=".55"/>`; });
+      // 눈 (표정 4가지)
+      const ey = y + h * 0.47, er = w * 0.105;
+      let open = "", shut = "", happy = "", love = "";
+      [-1, 1].forEach((d) => {
+        const px = cx + d * w * 0.2;
+        open += `<ellipse cx="${f(px)}" cy="${f(ey)}" rx="${f(er * 0.9)}" ry="${f(er * 1.12)}" fill="#fff" stroke="${INK}" stroke-width="${f(line)}"/>`
+          + `<ellipse cx="${f(px)}" cy="${f(ey + er * 0.1)}" rx="${f(er * 0.52)}" ry="${f(er * 0.7)}" fill="${INK}"/>`
+          + `<circle cx="${f(px - er * 0.2)}" cy="${f(ey - er * 0.22)}" r="${f(er * 0.22)}" fill="#fff"/>`;
+        shut += `<path d="M${f(px - er)} ${f(ey)}H${f(px + er)}" stroke="${INK}" stroke-width="${f(line)}" stroke-linecap="round"/>`;
+        const r = er * 0.85, cy2 = ey + er * 0.35, a1 = Math.PI * 1.1, a2 = Math.PI * 1.9;
+        happy += `<path d="M${f(px + r * Math.cos(a1))} ${f(cy2 + r * Math.sin(a1))}A${f(r)} ${f(r)} 0 0 1 ${f(px + r * Math.cos(a2))} ${f(cy2 + r * Math.sin(a2))}" fill="none" stroke="${INK}" stroke-width="${f(line)}" stroke-linecap="round"/>`;
+        const k = (er * 2.4) / 24, X = (v) => f(px + (v - 12) * k), Y = (v) => f(ey + (v - 12) * k);
+        love += `<path d="M${X(12)} ${Y(20.5)}C${X(12)} ${Y(20.5)} ${X(3)} ${Y(15)} ${X(3)} ${Y(8.8)}C${X(3)} ${Y(6)} ${X(5.1)} ${Y(4)} ${X(7.6)} ${Y(4)}C${X(9.5)} ${Y(4)} ${X(11)} ${Y(5.1)} ${X(12)} ${Y(6.6)}C${X(13)} ${Y(5.1)} ${X(14.5)} ${Y(4)} ${X(16.4)} ${Y(4)}C${X(18.9)} ${Y(4)} ${X(21)} ${Y(6)} ${X(21)} ${Y(8.8)}C${X(21)} ${Y(15)} ${X(12)} ${Y(20.5)} ${X(12)} ${Y(20.5)}Z" fill="${TC.berry}" stroke="${INK}" stroke-width="${f(line * 0.7)}" stroke-linejoin="round"/>`;
+      });
+      o += `<g class="m-open">${open}</g><g class="m-blink">${shut}</g><g class="m-happy">${happy}</g><g class="m-love">${love}</g>`;
+      // 코 + w 입 + 수염
+      const ny = y + h * 0.64, my = ny + h * 0.07, mr = w * 0.05;
+      o += `<path d="M${f(cx - w * 0.05)} ${f(ny)}H${f(cx + w * 0.05)}L${f(cx)} ${f(ny + h * 0.055)}Z" fill="${TC.pink}" stroke="${INK}" stroke-width="${f(line * 0.7)}" stroke-linejoin="round"/>`;
+      [-1, 1].forEach((d) => {
+        const mx = cx + d * w * 0.05, a1 = 0.1 * Math.PI, a2 = 0.9 * Math.PI;
+        o += `<path d="M${f(mx + mr * Math.cos(a1))} ${f(my + mr * Math.sin(a1))}A${f(mr)} ${f(mr)} 0 0 1 ${f(mx + mr * Math.cos(a2))} ${f(my + mr * Math.sin(a2))}" fill="none" stroke="${INK}" stroke-width="${f(line * 0.8)}" stroke-linecap="round"/>`;
+        [0, 1].forEach((k) => {
+          o += `<path d="M${f(cx + d * w * 0.3)} ${f(ny + h * (0.04 + k * 0.07))}L${f(cx + d * w * 0.52)} ${f(ny + h * (0 + k * 0.11))}" stroke="${INK}" stroke-width="${f(line * 0.55)}" stroke-linecap="round"/>`;
+        });
+      });
+      return o;
+    }
+
+    // 조각 하나: 칸들을 이어 붙인 둥근 덩어리 + 외곽선 + 아래 그림자 + 위 반짝이 + 꼬리 + 얼굴
+    function pieceSVG(p) {
+      const [rows, cols] = size(p);
+      const has = new Set(p.cells.map(([r, c]) => r + "," + c));
+      const in_ = (r, c) => has.has(r + "," + c);
+      const { m, s } = p.coat;
+      const M = 1.1, R = 5, L = 1.5; // 안쪽 여백, 모서리 둥글기, 외곽선 두께
+      // 덩어리 모양 (칸마다 둥근 네모 + 이웃 칸과 이어 주는 다리)
+      let blob = "";
+      p.cells.forEach(([r, c]) => {
+        const x = c * U, y = r * U;
+        blob += `<rect x="${x + M}" y="${y + M}" width="${U - 2 * M}" height="${U - 2 * M}" rx="${R}"/>`;
+        if (in_(r, c + 1)) blob += `<rect x="${x + U / 2}" y="${y + M}" width="${U}" height="${U - 2 * M}"/>`;
+        if (in_(r + 1, c)) blob += `<rect x="${x + M}" y="${y + U / 2}" width="${U - 2 * M}" height="${U}"/>`;
+        if (in_(r, c + 1) && in_(r + 1, c) && in_(r + 1, c + 1)) blob += `<rect x="${x + U / 2}" y="${y + U / 2}" width="${U}" height="${U}"/>`;
+      });
+      const id = "p" + Math.random().toString(36).slice(2, 8);
+      let out = `<defs><clipPath id="${id}">${blob}</clipPath></defs>`;
+      out += `<g fill="${INK}" stroke="${INK}" stroke-width="${L * 2}" stroke-linejoin="round">${blob}</g>`; // 외곽선
+      out += `<g fill="${m}">${blob}</g>`;
+      out += `<g clip-path="url(#${id})">`;
+      p.cells.forEach(([r, c]) => {
+        const x = c * U, y = r * U;
+        if (!in_(r + 1, c)) out += `<rect x="${x - 1}" y="${y + U - M - 4.2}" width="${U + 2}" height="6" fill="${s}"/>`; // 아래 그림자
+        if (!in_(r - 1, c)) out += `<rect x="${x + 3.2}" y="${y + M + 1.4}" width="${U - 6.4}" height="2.2" rx="1.1" fill="#fff" fill-opacity=".5"/>`; // 위 반짝이
+      });
+      out += `</g>`;
+      // 꼬리: 빈 쪽으로 말려 올라간 곡선 (꼬리 칸 위에)
+      if (p.cells.length > 1) {
+        const [tr, tc] = p.cells[p.tail];
+        const x = tc * U, y = tr * U;
+        const dir = !in_(tr, tc + 1) ? "r" : !in_(tr + 1, tc) ? "d" : !in_(tr, tc - 1) ? "l" : "u";
+        const cx0 = x + U / 2, cy0 = y + U / 2;
+        const curve = {
+          r: `M${cx0 - 3} ${cy0 + 4}C${cx0 + 2} ${cy0 + 5} ${x + U - 3} ${cy0 + 3} ${x + U - 3.5} ${cy0 - 1.5}C${x + U - 4} ${cy0 - 5} ${x + U - 7} ${cy0 - 5} ${x + U - 7.5} ${cy0 - 2.5}`,
+          l: `M${cx0 + 3} ${cy0 + 4}C${cx0 - 2} ${cy0 + 5} ${x + 3} ${cy0 + 3} ${x + 3.5} ${cy0 - 1.5}C${x + 4} ${cy0 - 5} ${x + 7} ${cy0 - 5} ${x + 7.5} ${cy0 - 2.5}`,
+          d: `M${cx0 - 4} ${cy0 - 3}C${cx0 - 5} ${cy0 + 2} ${cx0 - 3} ${y + U - 3} ${cx0 + 1.5} ${y + U - 3.5}C${cx0 + 5} ${y + U - 4} ${cx0 + 5} ${y + U - 7} ${cx0 + 2.5} ${y + U - 7.5}`,
+          u: `M${cx0 - 4} ${cy0 + 3}C${cx0 - 5} ${cy0 - 2} ${cx0 - 3} ${y + 3} ${cx0 + 1.5} ${y + 3.5}C${cx0 + 5} ${y + 4} ${cx0 + 5} ${y + 7} ${cx0 + 2.5} ${y + 7.5}`,
+        }[dir];
+        out += `<path d="${curve}" fill="none" stroke="${INK}" stroke-width="4.6" stroke-linecap="round"/>`;
+        out += `<path d="${curve}" fill="none" stroke="${s}" stroke-width="2.2" stroke-linecap="round"/>`;
+      }
+      // 얼굴
+      const [hr, hc] = p.cells[p.head];
+      out += faceSVG(hc * U + U / 2, hr * U + U / 2 + 1.6, U * 0.8, m);
+      return `<svg viewBox="0 0 ${cols * U} ${rows * U}" aria-hidden="true">${out}</svg>`;
+    }
+
+    // c = 한 칸 크기(px). 방 안·끄는 중에는 cell, 대기 중에는 조금 작은 trayCell
+    function draw(p, c = cell) {
+      const [rows, cols] = size(p);
+      p.drawn = c;
+      p.el.style.width = cols * c + "px";
+      p.el.style.height = rows * c + "px";
+      p.el.innerHTML = pieceSVG(p);
+    }
+
+    // 배치: 왼쪽은 방(5×5), 오른쪽은 대기 중인 고양이들. 화면이 좁으면 방 아래에.
+    // 판 크기는 항상 고정: 오른쪽 구역 높이 = 방 높이. 대기 중인 고양이가 다 들어가도록 크기만 조금 줄여요.
+    function layout() {
+      const W = stage.clientWidth;
+      const side = W >= 640;
+      cell = Math.floor(Math.min(side ? 64 : 80, side ? (W * 0.42) / N : W / 5.4) / 4) * 4;
+      const roomSize = cell * N;
+      roomX = side ? 6 : Math.round((W - roomSize) / 2 / 4) * 4;
+      room.style.left = roomX + "px";
+      room.style.width = room.style.height = roomSize + "px";
+
+      // 대기 구역 (위치와 크기 고정)
+      const trayX = side ? roomX + roomSize + Math.round(cell * 0.8) : 0;
+      const trayY = side ? 0 : roomSize + Math.round(cell * 0.7);
+      const trayW = W - trayX;
+      const trayH = side ? roomSize : Math.round(roomSize * 1.1);
+
+      // 고양이마다 정사각형 자리: 한 변 = 가장 긴 쪽 (돌려도 같아서 다른 조각이 움직이지 않아요)
+      const order = pieces.slice().sort((a, b) => Math.max(...size(b)) - Math.max(...size(a)) || pieces.indexOf(a) - pieces.indexOf(b));
+      const pack = (tc) => {
+        const gap = Math.round(tc * 0.35), slots = new Map();
+        let y = 0, row = [], rowW = 0, rowH = 0;
+        const flush = () => {
+          let x = Math.round((trayW - (rowW - gap)) / 2);
+          row.forEach((p) => { const s = Math.max(...size(p)) * tc; slots.set(p, { x, y, s }); x += s + gap; });
+          if (row.length) y += rowH + gap;
+          row = []; rowW = 0; rowH = 0;
+        };
+        order.forEach((p) => {
+          const s = Math.max(...size(p)) * tc;
+          if (rowW + s > trayW && row.length) flush();
+          row.push(p);
+          rowW += s + gap;
+          rowH = Math.max(rowH, s);
+        });
+        flush();
+        return { slots, h: y - gap };
+      };
+      // 구역 안에 다 들어가는 가장 큰 크기 찾기 (최대 = 방의 한 칸)
+      let tc = cell, packed = pack(tc);
+      while (packed.h > trayH && tc > 12) { tc -= 2; packed = pack(tc); }
+      const offY = trayY + Math.max(0, Math.round((trayH - packed.h) / 2));
+
+      pieces.forEach((p) => {
+        p.el.classList.toggle("is-placed", !!p.at);
+        if (p.el.classList.contains("is-drag")) return;
+        if (p.at) {
+          draw(p, cell);
+          p.el.style.left = roomX + p.at[1] * cell + "px";
+          p.el.style.top = p.at[0] * cell + "px";
+        } else {
+          draw(p, tc);
+          const sl = packed.slots.get(p), [rows, cols] = size(p);
+          p.el.style.left = trayX + sl.x + Math.round((sl.s - cols * tc) / 2) + "px";
+          p.el.style.top = offY + sl.y + Math.round((sl.s - rows * tc) / 2) + "px";
+        }
+      });
+      stage.style.height = trayY + trayH + "px";
+    }
+
+    // ── 끌어다 놓기 ──
+    let drag = null;
+
+    // 조각 왼쪽 위 모서리에서 가장 가까운 칸
+    function target(p) {
+      return [Math.round(parseFloat(p.el.style.top) / cell), Math.round((parseFloat(p.el.style.left) - roomX) / cell)];
+    }
+
+    function overRoom(p) {
+      const [r, c] = target(p);
+      const [rows, cols] = size(p);
+      return r > -rows && r < N && c > -cols && c < N;
+    }
+
+    function showShadow(p) {
+      const [r, c] = target(p);
+      if (!fits(p, r, c)) { shadow.hidden = true; return; }
+      const [rows, cols] = size(p);
+      shadow.hidden = false;
+      shadow.style.left = roomX + c * cell + "px";
+      shadow.style.top = r * cell + "px";
+      shadow.style.width = cols * cell + "px";
+      shadow.style.height = rows * cell + "px";
+      shadow.innerHTML = pieceSVG(p);
+    }
+
+    // 고양이를 잡으면 야옹 · prrr… 중 하나 (같은 소리가 연달아 나지 않게)
+    // 진짜 고양이 녹음(CC0)에서 잘라 낸 5개: 울음 4번 + 그르릉
+    // vol은 다른 효과음과 같은 크기(평균 0.015)가 되도록 각 구간마다 맞춘 값이에요
+    const CAT_SOUNDS = [
+      { key: "mew", offset: 0.10, dur: 0.63, vol: 0.100 },              // 울음 1
+      { key: "mew", offset: 1.10, dur: 0.67, vol: 0.087 },              // 울음 2
+      { key: "mew", offset: 2.16, dur: 0.51, vol: 0.096 },              // 울음 3
+      { key: "mew", offset: 3.21, dur: 0.53, vol: 0.090 },              // 울음 4
+      { key: "purr", offset: 0.60, dur: 1.2, vol: 0.27, fade: 0.15 },   // 그르릉
+    ];
+    let lastCat = -1;
+    function catSound() {
+      let i;
+      do { i = Math.floor(Math.random() * CAT_SOUNDS.length); } while (i === lastCat);
+      lastCat = i;
+      const s = CAT_SOUNDS[i];
+      // 울음은 높이를 아주 살짝씩 다르게 (같은 녹음이라도 매번 조금 다르게 들리게)
+      const rate = s.key === "mew" ? 0.95 + Math.random() * 0.1 : 1;
+      Retro.playSample(s.key, { ...s, rate });
+    }
+
+    function onDown(e, p) {
+      if (!playing) return;
+      e.preventDefault();
+      catSound();
+      const box = p.el.getBoundingClientRect();
+      drag = { p, id: e.pointerId, sx: e.clientX, sy: e.clientY, dx: e.clientX - box.left, dy: e.clientY - box.top, moved: false };
+      p.el.setPointerCapture(e.pointerId);
+    }
+
+    function onMove(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      const { p } = drag;
+      if (!drag.moved) {
+        if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 6) return;
+        drag.moved = true;
+        p.at = null;
+        p.el.classList.add("is-drag");
+        p.el.classList.remove("is-placed");
+        // 대기 구역에서 작게 보이던 고양이는 방 크기로 키워요
+        const k = cell / p.drawn;
+        draw(p, cell);
+        drag.dx *= k;
+        drag.dy *= k;
+      }
+      const s = stage.getBoundingClientRect();
+      p.el.style.left = e.clientX - s.left - drag.dx + "px";
+      p.el.style.top = e.clientY - s.top - drag.dy + "px";
+      showShadow(p);
+    }
+
+    function onUp(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      const { p, moved } = drag;
+      drag = null;
+      shadow.hidden = true;
+      if (!moved) return spin(p);
+      p.el.classList.remove("is-drag");
+      const [r, c] = target(p);
+      if (fits(p, r, c)) { p.at = [r, c]; Retro.sfx("place"); Toon.buzz("pick"); }
+      else { p.at = null; if (overRoom(p)) { Retro.sfx("error"); Toon.buzz("bump"); } }
+      layout();
+      checkWin();
+    }
+
+    // 터치가 끊기면(전화 알림 등) 회전시키지 않고, 끌던 조각만 제자리로
+    function onCancel(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      const { p, moved } = drag;
+      drag = null;
+      shadow.hidden = true;
+      if (moved) { p.el.classList.remove("is-drag"); p.at = null; layout(); }
+    }
+
+    // 짧게 누르면 회전. 방 안에서 돌린 뒤 안 맞으면 대기 구역으로
+    function spin(p) {
+      rotate(p);
+      Retro.sfx("rotate");
+      if (p.at && !fits(p, p.at[0], p.at[1])) { p.at = null; Toon.buzz("bump"); }
+      layout();
+      checkWin();
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if ((e.key === "r" || e.key === "R") && drag && drag.moved) {
+        const { p } = drag;
+        rotate(p);
+        draw(p);
+        Retro.sfx("rotate");
+        // 회전 후에도 커서가 조각 위에 있도록 잡은 위치를 조정
+        drag.dx = Math.min(drag.dx, p.el.offsetWidth - 4);
+        drag.dy = Math.min(drag.dy, p.el.offsetHeight - 4);
+        showShadow(p);
+      }
+      if (e.key === "Enter" && !playing && !overlay.hidden && document.activeElement !== playBtn) playBtn.click();
+    });
+
+    // ── 레벨 진행 ──
+    function loadLevel(i) {
+      level = i;
+      levelEl.textContent = i + 1;
+      pieces.forEach((p) => p.el.remove());
+      pieces = buildPieces(makeLevel(LEVEL_CATS[i])); // 매번 새로운 무작위 퍼즐
+      pieces.forEach((p) => {
+        // 처음엔 무작위로 돌려 놓아서 조금 더 어렵게
+        for (let k = Math.floor(Math.random() * 4); k > 0; k--) rotate(p);
+        p.el = document.createElement("div");
+        p.el.className = "piece";
+        p.el.style.setProperty("--d", (-Math.random() * 4.4).toFixed(2) + "s"); // 깜빡이는 때가 조각마다 달라요
+        p.el.addEventListener("pointerdown", (e) => onDown(e, p));
+        p.el.addEventListener("pointermove", onMove);
+        p.el.addEventListener("pointerup", onUp);
+        p.el.addEventListener("pointercancel", onCancel);
+        stage.appendChild(p.el);
+      });
+      layout();
+    }
+
+    // 클리어 색종이: 판 위에서 사탕 색 조각이 쏟아져요
+    function confetti() {
+      if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const layer = document.createElement("div");
+      layer.className = "confetti";
+      const colors = [TC.sun, TC.berry, TC.leaf, TC.skyHi, TC.grapeHi, TC.cat, TC.milk];
+      const fall = board.clientHeight + 40 + "px";
+      for (let i = 0; i < 40; i++) {
+        const c = document.createElement("span");
+        c.style.left = Math.random() * 100 + "%";
+        c.style.background = colors[i % colors.length];
+        c.style.animationDelay = (Math.random() * 0.5).toFixed(2) + "s";
+        c.style.setProperty("--x", Math.round((Math.random() - 0.5) * 160) + "px");
+        c.style.setProperty("--rot", Math.round((Math.random() - 0.5) * 900) + "deg");
+        c.style.setProperty("--fall", fall);
+        layer.appendChild(c);
+      }
+      board.appendChild(layer);
+      setTimeout(() => layer.remove(), 2400);
+    }
+
+    function checkWin() {
+      if (!occupied(null).every((row) => row.every(Boolean))) return;
+      playing = false;
+      stage.classList.add("is-locked");
+      Retro.sfx("clear");
+      Toon.buzz("win");
+      confetti();
+      if (level + 1 > cleared) {
+        cleared = level + 1;
+        bestEl.textContent = cleared;
+        try { localStorage.setItem("puzzle-clear", String(cleared)); } catch (e) {}
+      }
+      const last = level === LEVEL_COUNT - 1;
+      setTimeout(() => {
+        overlayTitle.textContent = last ? "All Clear!" : "Solved!";
+        overlayText.textContent = last ? "모든 방의 고양이를 정리했어요. 수고했어요!" : `Level ${level + 1} 완성! 다음 방으로 가 볼까요?`;
+        playBtn.textContent = last ? "Again" : "Next";
+        playBtn.dataset.next = last ? 0 : level + 1;
+        overlay.classList.add("is-win");
+        overlay.hidden = false;
+        playBtn.focus();
+      }, 700);
+    }
+
+    function start(i) {
+      loadLevel(i);
+      playing = true;
+      stage.classList.remove("is-locked");
+      overlay.hidden = true;
+      overlay.classList.remove("is-win");
+      Retro.sfx("start");
+    }
+
+    playBtn.addEventListener("click", () => start(Number(playBtn.dataset.next || 0)));
+    // New: 같은 레벨의 새 무작위 퍼즐
+    document.getElementById("newBtn").addEventListener("click", () => { if (playing) start(level); });
+    resetBtn.addEventListener("click", () => {
+      if (!playing) return;
+      pieces.forEach((p) => (p.at = null));
+      Retro.sfx("select");
+      layout();
+    });
+    window.addEventListener("resize", () => { if (pieces.length) layout(); });
+
+    // 시작 전에도 첫 레벨 조각을 보여줘요
+    loadLevel(0);
+    stage.classList.add("is-locked");
+  </script>
+</body>
+</html>

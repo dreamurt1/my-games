@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ryan-portfolio · rock paper scissors (brawl)</title>
+  <!-- 브롤 스타일 글꼴: Lilita One (영문) + Black Han Sans (한글), 둘 다 OFL · base64로 내 폴더에 -->
+  <link href="../fonts/brawl-fonts.css" rel="stylesheet">
+  <link href="brawl.css" rel="stylesheet">
+  <style>
+    .board { max-width: 760px; }
+
+    /* ── 경기장: 밝은 하늘색 판 + 가운데서 퍼지는 햇살 ── */
+    .arena {
+      position: relative;
+      padding: clamp(18px, 4vw, 34px) clamp(10px, 3vw, 30px) clamp(20px, 4vw, 32px);
+      overflow: hidden; /* 폭죽이 판 밖으로 나가 가로 스크롤이 생기지 않게 */
+      border: var(--line) solid var(--ink);
+      border-radius: var(--radius);
+      background:
+        repeating-conic-gradient(from 0deg at 50% 36%, rgba(255, 255, 255, 0.16) 0deg 8deg, transparent 8deg 16deg),
+        radial-gradient(120% 90% at 50% 30%, #a8d6ff, var(--sky-hi) 55%, var(--sky));
+    }
+
+    /* ── 점수판: 나(파랑 팀) 0 : 0 컴퓨터(빨강 팀) ── */
+    .scoreboard {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(6px, 2.2vw, 16px);
+      margin-bottom: clamp(18px, 4vw, 28px);
+    }
+
+    .who {
+      padding: 3px 12px 6px;
+      border: 3px solid var(--ink);
+      border-radius: 12px;
+      font-family: "Black Han Sans", sans-serif;
+      font-size: clamp(15px, 3.6vw, 22px);
+      line-height: 1.2;
+      text-shadow: var(--outline);
+      box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.2), 0 4px 0 var(--ink);
+      white-space: nowrap;
+    }
+
+    .who.me { background: linear-gradient(var(--sky-hi), var(--sky)); }
+    .who.cpu { background: linear-gradient(var(--berry-hi), var(--berry)); }
+
+    .score {
+      min-width: 1.45em;
+      padding: 2px 10px 7px;
+      text-align: center;
+      font-size: clamp(40px, 10vw, 68px);
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      color: var(--milk);
+      text-shadow: var(--outline-big);
+      background: linear-gradient(#22378f, var(--navy));
+      border: var(--line) solid var(--ink);
+      border-radius: 16px;
+      box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.15), 0 5px 0 var(--ink);
+    }
+
+    .score.me { color: var(--sun); }
+    .score.cpu { color: var(--berry-hi); }
+    .colon { font-size: clamp(30px, 8vw, 52px); line-height: 1; color: var(--milk); text-shadow: var(--outline-big); }
+
+    /* ── 큰 버튼 3개: 사탕 버튼 (가위 노랑 · 바위 보라 · 보 빨강) ── */
+    .picks {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(8px, 2.6vw, 24px);
+    }
+
+    .pick {
+      --face: var(--sun);
+      --face-hi: var(--sun-hi);
+      --face-lo: var(--sun-lo);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+      padding: clamp(8px, 2vw, 16px) 4px clamp(10px, 2vw, 14px);
+      border: var(--line) solid var(--ink);
+      border-radius: 20px;
+      font: inherit;
+      font-family: "Black Han Sans", sans-serif;
+      font-size: clamp(17px, 4.4vw, 26px);
+      line-height: 1.2;
+      color: var(--milk);
+      text-shadow: var(--outline-drop);
+      background:
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.55) 0 7px, transparent 7px) padding-box,
+        linear-gradient(to bottom, var(--face-hi), var(--face) 40%, var(--face) 72%, var(--face-lo)) padding-box;
+      box-shadow: inset 0 -7px 0 rgba(0, 0, 0, 0.18), 0 7px 0 var(--ink);
+      cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
+      transition: transform 0.08s ease-out, box-shadow 0.08s ease-out, filter 0.15s ease-out;
+    }
+
+    .pick--rock { --face: var(--grape); --face-hi: var(--grape-hi); --face-lo: var(--grape-lo); }
+    .pick--paper { --face: var(--berry); --face-hi: var(--berry-hi); --face-lo: var(--berry-lo); }
+
+    .pick .hand {
+      width: 78%;
+      height: auto;
+      filter: drop-shadow(0 3px 0 rgba(18, 12, 36, 0.35));
+      transition: transform 0.18s cubic-bezier(0.3, 1.6, 0.5, 1);
+    }
+
+    .pick:hover { filter: brightness(1.07); }
+    .pick:hover .hand { transform: rotate(-7deg) scale(1.06); }
+
+    .pick:active, .pick.is-picked {
+      transform: translateY(5px);
+      box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.18), 0 2px 0 var(--ink);
+    }
+
+    .pick.is-picked { outline: 4px solid var(--milk); outline-offset: 3px; }
+    .pick:disabled { cursor: default; }
+
+    /* ── 결과: YOU vs COM 맞대결 ── */
+    .result {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: clamp(4px, 2vw, 14px);
+      margin-top: clamp(22px, 5vw, 36px);
+      padding: clamp(12px, 3vw, 20px) clamp(8px, 2vw, 16px) clamp(12px, 3vw, 18px);
+      border: var(--line) solid var(--ink);
+      border-radius: 22px;
+      background: rgba(11, 29, 94, 0.8);
+      box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.15), 0 6px 0 var(--ink);
+    }
+
+    .side { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+    .side-label {
+      padding: 1px 14px 4px;
+      border: 3px solid var(--ink);
+      border-radius: 999px;
+      font-size: clamp(14px, 3.4vw, 18px);
+      letter-spacing: 0.06em;
+      text-shadow: var(--outline);
+      box-shadow: 0 3px 0 var(--ink);
+    }
+
+    .side-label.me { background: var(--sky); }
+    .side-label.cpu { background: var(--berry); }
+
+    .slot {
+      display: grid;
+      place-items: center;
+      width: clamp(84px, 24vw, 132px);
+      aspect-ratio: 1;
+      border: var(--line) solid var(--ink);
+      border-radius: 20px;
+      box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.12), 0 5px 0 var(--ink);
+    }
+
+    .slot.me { background: radial-gradient(circle at 50% 35%, #f2f8ff, #9cc4ff); }
+    .slot.cpu { background: radial-gradient(circle at 50% 35%, #fff2f6, #ffa6bf); }
+    .slot .hand { width: 84%; height: auto; }
+    .slot.cpu .hand { transform: scaleX(-1); } /* 컴퓨터 손은 나를 마주 보게 */
+
+    /* 아직 비어 있는 칸: 큰 물음표 */
+    .slot .q { font-size: clamp(44px, 10vw, 64px); line-height: 1; color: var(--milk); text-shadow: var(--outline-big); transform: rotate(-8deg); }
+
+    .slot.pop { animation: pop 0.38s cubic-bezier(0.3, 1.7, 0.5, 1); }
+    @keyframes pop { 0% { transform: scale(0.6) rotate(-6deg); } 100% { transform: scale(1) rotate(0); } }
+
+    .vs {
+      font-size: clamp(36px, 9vw, 64px);
+      line-height: 1;
+      color: var(--sun);
+      text-shadow: var(--outline-big);
+      transform: rotate(-10deg);
+    }
+
+    .verdict {
+      grid-column: 1 / -1;
+      min-height: 1.5em;
+      margin-top: 12px;
+      text-align: center;
+      font-family: "Black Han Sans", sans-serif;
+      font-size: clamp(26px, 6.4vw, 40px);
+      line-height: 1.25;
+      text-shadow: var(--outline-big);
+    }
+
+    .verdict.is-hint {
+      font-size: clamp(14px, 3.6vw, 17px);
+      color: var(--mist);
+      text-shadow: 0 2px 0 rgba(18, 12, 36, 0.6);
+    }
+
+    .verdict.win { color: var(--sun); }
+    .verdict.lose { color: var(--berry-hi); }
+    .verdict.draw { color: var(--milk); }
+    .verdict:not(.is-hint) { animation: shout 0.42s cubic-bezier(0.3, 1.7, 0.5, 1); }
+    @keyframes shout { 0% { transform: scale(0.5) rotate(-6deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+
+    /* 글 사이에 들어가는 아이콘 */
+    .verdict .ico, .final p .ico, .inline-ico { display: inline-block; height: 1.1em; width: auto; margin-left: 0.25em; vertical-align: -0.2em; }
+
+    /* 미리보기 모드 막대 */
+    .preview-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 8px 0 4px;
+      padding: 8px 10px 8px 16px;
+      border: var(--line) solid var(--ink);
+      border-radius: 16px;
+      background: linear-gradient(var(--sun-hi), var(--sun));
+      box-shadow: 0 5px 0 var(--ink);
+    }
+
+    .preview-bar[hidden] { display: none; }
+    .preview-label { font-size: 17px; letter-spacing: 0.04em; text-shadow: var(--outline); }
+
+    /* ── HYPE! (3점) / ALMOST! (4점): 기울어진 외침 띠 ── */
+    .hype {
+      position: absolute;
+      left: -6%;
+      right: -6%;
+      top: 36%;
+      z-index: 6;
+      display: grid;
+      place-items: center;
+      padding: 12px 0 18px;
+      pointer-events: none;
+      font-size: clamp(48px, 12vw, 92px);
+      line-height: 1;
+      color: var(--sun);
+      text-shadow: var(--outline-big);
+      background: repeating-linear-gradient(135deg, var(--berry) 0 26px, var(--berry-lo) 26px 52px);
+      border-top: 5px solid var(--ink);
+      border-bottom: 5px solid var(--ink);
+      box-shadow: 0 10px 0 rgba(18, 12, 36, 0.45);
+      animation: hypeIn 1.5s ease-out forwards;
+    }
+
+    .hype[hidden] { display: none; }
+
+    /* ALMOST!는 더 크게, 색이 번쩍번쩍, 보라 띠 */
+    .hype.is-almost {
+      font-size: clamp(56px, 14vw, 112px);
+      background: repeating-linear-gradient(135deg, var(--grape) 0 26px, var(--grape-lo) 26px 52px);
+      border-width: 7px;
+      animation: hypeIn 1.9s ease-out forwards, rainbow 0.28s steps(1, end) infinite;
+    }
+
+    @keyframes hypeIn {
+      0% { transform: rotate(-5deg) scale(0.2); opacity: 0; }
+      12% { transform: rotate(-5deg) scale(1.16); opacity: 1; }
+      22% { transform: rotate(-5deg) scale(1); }
+      80% { transform: rotate(-5deg) scale(1); opacity: 1; }
+      100% { transform: rotate(-5deg) scale(1.06); opacity: 0; }
+    }
+
+    @keyframes rainbow {
+      0% { color: var(--sun); }
+      25% { color: var(--milk); }
+      50% { color: var(--leaf-hi); }
+      75% { color: var(--berry-hi); }
+    }
+
+    /* ── 최종 승리 / 패배 화면 ── */
+    .final {
+      position: absolute;
+      inset: 0;
+      z-index: 7;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(8px, 2vw, 14px);
+      padding: 20px;
+      overflow: hidden;
+      text-align: center;
+      background: radial-gradient(90% 70% at 50% 40%, #2b62e6, var(--navy) 78%);
+    }
+
+    .final.lose { background: radial-gradient(90% 70% at 50% 40%, #4b3a8f, #1b1240 80%); }
+    .final[hidden] { display: none; }
+
+    /* 단계별로 하나씩 나타나요 (.on) */
+    .final .step { position: relative; visibility: hidden; }
+    .final .step.on { visibility: visible; animation: popIn 0.45s cubic-bezier(0.3, 1.7, 0.5, 1); }
+    @keyframes popIn { 0% { transform: scale(0.3); } 100% { transform: scale(1); } }
+
+    .final-tag {
+      padding: 4px 22px 8px;
+      font-size: clamp(22px, 5vw, 32px);
+      line-height: 1.1;
+      color: var(--milk);
+      text-shadow: var(--outline-drop);
+      background:
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 0 6px, transparent 6px) padding-box,
+        linear-gradient(var(--sun-hi), var(--sun) 50%, var(--sun-lo)) padding-box;
+      border: var(--line) solid var(--ink);
+      border-radius: 14px;
+      box-shadow: 0 5px 0 var(--ink);
+      rotate: -3deg;
+    }
+
+    .final.lose .final-tag { background: linear-gradient(var(--grape-hi), var(--grape) 50%, var(--grape-lo)); }
+
+    .final h2 {
+      font-family: "Black Han Sans", sans-serif;
+      font-size: clamp(38px, 9vw, 64px);
+      line-height: 1.1;
+      color: var(--sun);
+      text-shadow: var(--outline-big);
+      rotate: -2deg;
+    }
+
+    .final.lose h2 { color: var(--grape-hi); }
+    .final p { font-family: "Black Han Sans", sans-serif; font-size: clamp(15px, 3.6vw, 19px); line-height: 1.6; color: var(--milk); text-shadow: 0 2px 0 rgba(18, 12, 36, 0.7); }
+    .final .btn { margin-top: 4px; }
+
+    /* 빛살: 단계가 올라갈수록 더 밝고 빠르게 */
+    .rays {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 1100px;
+      height: 1100px;
+      margin: -550px 0 0 -550px;
+      opacity: 0;
+      background: repeating-conic-gradient(rgba(255, 255, 255, 0.2) 0deg 9deg, transparent 9deg 18deg);
+      animation: spin 14s linear infinite;
+      transition: opacity 0.5s ease-out;
+    }
+
+    .rays.rays--2 {
+      background: repeating-conic-gradient(rgba(255, 242, 122, 0.22) 0deg 5deg, transparent 5deg 30deg);
+      animation-direction: reverse;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .final[data-stage="2"] .rays--1 { opacity: 0.45; }
+    .final[data-stage="3"] .rays--1 { opacity: 0.75; animation-duration: 7s; }
+    .final[data-stage="4"] .rays--1, .final[data-stage="5"] .rays--1 { opacity: 1; animation-duration: 4s; }
+    .final[data-stage="4"] .rays--2, .final[data-stage="5"] .rays--2 { opacity: 1; animation-duration: 6s; }
+    .final.lose .rays { display: none; }
+
+    /* 번쩍! (4단계 시작) */
+    .final.flash::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: var(--milk);
+      animation: flashOut 0.5s ease-out forwards;
+      pointer-events: none;
+    }
+
+    @keyframes flashOut { from { opacity: 0.85; } to { opacity: 0; } }
+
+    .trophy { display: block; width: clamp(100px, 24vw, 150px); height: auto; filter: drop-shadow(0 6px 0 rgba(18, 12, 36, 0.55)); }
+    .final:not(.lose) #trophyWrap.on .trophy { animation: drop 0.55s cubic-bezier(0.3, 1.5, 0.6, 1), bob 1.2s ease-in-out 0.55s infinite; }
+    @keyframes drop { 0% { transform: translateY(-260px); } 100% { transform: translateY(0); } }
+    @keyframes bob { 50% { transform: translateY(-8px) rotate(3deg); } }
+
+    /* 제목 색이 번쩍번쩍 (3단계부터) */
+    .final:not(.lose) h2.on { animation: popIn 0.45s cubic-bezier(0.3, 1.7, 0.5, 1), titleFlash 0.6s steps(1, end) 0.45s infinite; }
+    @keyframes titleFlash { 50% { color: var(--milk); } }
+
+    /* 위에서 쏟아지는 색종이 */
+    .confetti {
+      position: absolute;
+      top: -18px;
+      width: 10px;
+      height: 16px;
+      border: 2px solid var(--ink);
+      border-radius: 3px;
+      animation: fall 2s linear infinite;
+    }
+
+    @keyframes fall { to { transform: translateY(780px) rotate(560deg); } }
+
+    /* ── 최종 승리 화면 다음: 보물 상자 장면 ── */
+    .gift { display: none; flex-direction: column; align-items: center; gap: 14px; }
+    .final.is-gift .gift { display: flex; }
+    /* 상자 장면에서는 승리 문구들을 치우고 상자만 크게 */
+    .final.is-gift #finalTag, .final.is-gift #trophyWrap, .final.is-gift #finalTitle, .final.is-gift #finalText { display: none; }
+    .chest { display: block; width: clamp(170px, 42vw, 250px); height: auto; filter: drop-shadow(0 8px 0 rgba(18, 12, 36, 0.55)); }
+    .chest.wobble { animation: wobble 0.3s ease-in-out 2; }
+    @keyframes wobble { 25% { transform: rotate(-8deg) scale(1.04); } 75% { transform: rotate(8deg) scale(1.04); } }
+    .chest.opened { animation: openPop 0.45s cubic-bezier(0.3, 1.7, 0.5, 1); }
+    @keyframes openPop { 0% { transform: scale(0.85); } 100% { transform: scale(1); } }
+    .gift-text { display: flex; flex-direction: column; align-items: center; gap: 4px; visibility: hidden; }
+    .gift-text.on { visibility: visible; animation: popIn 0.45s cubic-bezier(0.3, 1.7, 0.5, 1); }
+    .final .gift-q { font-family: inherit; font-size: clamp(30px, 7vw, 46px); line-height: 1.1; color: var(--sun); text-shadow: var(--outline-big); rotate: -2deg; }
+    .final .gift-slot { font-family: inherit; font-size: clamp(22px, 5vw, 30px); letter-spacing: 0.3em; color: var(--milk); text-shadow: var(--outline); }
+
+    /* ── 한 판 이겼을 때: 가운데서 터지는 폭죽 (동그라미 · 별) ── */
+    .spark {
+      position: absolute;
+      z-index: 4;
+      width: 14px;
+      height: 14px;
+      border: 3px solid var(--ink);
+      border-radius: 50%;
+      pointer-events: none;
+      animation: burst 0.9s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
+    }
+
+    .spark.star { width: 24px; height: 24px; border: 0; border-radius: 0; background: none; }
+    .spark.star .ico { height: 100%; }
+
+    @keyframes burst {
+      0% { transform: translate(-50%, -50%) scale(0.4); opacity: 1; }
+      60% { transform: translate(calc(var(--dx) - 50%), calc(var(--dy) - 50%)) scale(1); opacity: 1; }
+      100% { transform: translate(calc(var(--dx) * 1.1 - 50%), calc(var(--dy) + 70px - 50%)) scale(0.7) rotate(160deg); opacity: 0; }
+    }
+
+    /* 한 판 졌을 때: 판이 흔들 */
+    .board.shake { animation: shake 0.42s ease-in-out; }
+    @keyframes shake {
+      0%, 100% { transform: translate(0, 0) rotate(0); }
+      15% { transform: translate(-10px, 0) rotate(-1deg); }
+      30% { transform: translate(10px, -4px) rotate(1deg); }
+      45% { transform: translate(-8px, 4px) rotate(-0.6deg); }
+      60% { transform: translate(8px, 0) rotate(0.6deg); }
+      75% { transform: translate(-4px, 0); }
+    }
+
+    @media (max-width: 560px) {
+      .who { padding: 2px 8px 5px; }
+      .pick { border-radius: 16px; box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.18), 0 5px 0 var(--ink); }
+      .pick:active, .pick.is-picked { transform: translateY(4px); }
+      .result { border-radius: 18px; }
+      .slot { border-radius: 16px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slot.pop, .rays, .final .step.on, .final:not(.lose) #trophyWrap.on .trophy, .final:not(.lose) h2.on,
+      .board.shake, .chest.wobble, .chest.opened, .hype, .hype.is-almost, .verdict:not(.is-hint), .gift-text.on { animation: none; }
+      .confetti, .spark, .final.flash::after { display: none; }
+      .pick .hand { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="btn-ghost" href="arcade.html" id="backLink" aria-label="뒤로"><span data-icon="back"></span><span class="label">Back</span></a>
+      <div class="top-right">
+        <span class="hi"><span data-icon="trophy"></span>WINS <span id="wins">000000</span></span>
+        <button class="btn-ghost" id="soundBtn" type="button"></button>
+      </div>
+    </header>
+
+    <!-- 미리보기 모드 막대 (?preview=3pt|4pt|win 으로 열었을 때만 보여요) -->
+    <div class="preview-bar" id="previewBar" hidden>
+      <span class="preview-label">PREVIEW · <span id="previewName"></span></span>
+      <button class="btn-ghost" id="previewBtn" type="button">다시 보기</button>
+    </div>
+
+    <h1 class="band small">가위바위보!</h1>
+    <p class="how">가위, 바위, 보 중 하나를 골라요. 컴퓨터도 하나를 내요.<br>먼저 5점을 얻으면 최종 승리!</p>
+
+    <main class="board">
+      <div class="arena">
+        <!-- 점수판 -->
+        <div class="scoreboard" aria-live="polite" aria-label="점수">
+          <span class="who me">나</span>
+          <span class="score me" id="meScore">0</span>
+          <span class="colon" aria-hidden="true">:</span>
+          <span class="score cpu" id="cpuScore">0</span>
+          <span class="who cpu">컴퓨터</span>
+        </div>
+
+        <div class="picks">
+          <button class="pick" type="button" data-hand="scissors" aria-label="가위 내기"><span data-hand-icon="scissors"></span>가위</button>
+          <button class="pick pick--rock" type="button" data-hand="rock" aria-label="바위 내기"><span data-hand-icon="rock"></span>바위</button>
+          <button class="pick pick--paper" type="button" data-hand="paper" aria-label="보 내기"><span data-hand-icon="paper"></span>보</button>
+        </div>
+
+        <!-- 결과: YOU vs COM -->
+        <section class="result" aria-label="결과">
+          <div class="side">
+            <span class="side-label me">YOU</span>
+            <div class="slot me" id="youSlot"></div>
+          </div>
+          <span class="vs" aria-hidden="true">VS</span>
+          <div class="side">
+            <span class="side-label cpu">COM</span>
+            <div class="slot cpu" id="cpuSlot" aria-live="polite"></div>
+          </div>
+          <p class="verdict is-hint" id="result" aria-live="polite">결과가 여기에 나와요</p>
+        </section>
+
+        <!-- 3점 HYPE! / 4점 ALMOST! -->
+        <p class="hype" id="hype" aria-live="assertive" hidden></p>
+
+        <!-- 최종 승리 / 패배: 단계별로 점점 화려하게 -->
+        <div class="final" id="final" role="dialog" aria-labelledby="finalTitle" data-stage="0" hidden>
+          <span class="rays rays--1" aria-hidden="true"></span>
+          <span class="rays rays--2" aria-hidden="true"></span>
+          <p class="final-tag step" id="finalTag">YOU WIN!</p>
+          <span class="step" id="trophyWrap"></span>
+          <h2 class="step" id="finalTitle"></h2>
+          <p class="step" id="finalText"></p>
+          <div class="gift step" id="gift">
+            <span id="chest"></span>
+            <div class="gift-text" id="giftText">
+              <p class="gift-q">Your gift is...?</p>
+              <p class="gift-slot blink">? ? ?</p>
+            </div>
+          </div>
+          <button class="btn go step" id="againBtn" type="button">다시 하기</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../retro.js"></script>
+  <script src="toon.js"></script>
+  <script>
+    Toon.icons();
+    Toon.mountMute(document.getElementById("soundBtn"));
+
+    // 뒤로 가기: arcade.html에서 왔다면 브라우저 기록으로 되돌아가요
+    document.getElementById("backLink").addEventListener("click", (e) => {
+      if (document.referrer && /arcade\.html?$/.test(document.referrer) && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+
+    // ── 만화 그림 (SVG, 굵은 잉크 외곽선) ──
+    const C = Toon.C;
+    const SKIN = "#ffe0bd", SKIN_LO = "#f4b78a";
+    const LN = `stroke="${C.ink}" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"`;
+    const sk = `fill="${SKIN}" ${LN}`;
+    const sleeve = `<rect x="35" y="75" width="32" height="21" rx="6" fill="${C.sky}" ${LN}/><path d="M39 81h24" stroke="${C.skyHi}" stroke-width="3" stroke-linecap="round"/>`;
+    const shine = (x, y, h) => `<path d="M${x} ${y}v${h}" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".75"/>`;
+    const palmShade = (x, w) => `<path d="M${x + 2} 72 Q${x + w / 2} 80 ${x + w - 2} 72 L${x + w - 2} 74 Q${x + w - 2} 82 ${x + w - 16} 82 H${x + 16} Q${x + 2} 82 ${x + 2} 74Z" fill="${SKIN_LO}"/>`;
+    const svg = (body, cls, vb = "0 0 100 100") => `<svg class="${cls}" viewBox="${vb}" aria-hidden="true" focusable="false">${body}</svg>`;
+
+    const HAND_ART = {
+      // 바위: 꽉 쥔 주먹
+      rock: sleeve
+        + `<rect x="21" y="38" width="60" height="46" rx="18" ${sk}/>` + palmShade(21, 60)
+        + [21, 36, 51, 66].map((x) => `<rect x="${x}" y="25" width="15" height="29" rx="7.5" ${sk}/>`).join("")
+        + `<path d="M19 60 C27 50 50 50 62 57 C67 60 65 68 58 68 L30 69 C22 69 17 65 19 60Z" ${sk}/>`
+        + shine(28, 31, 7) + shine(43, 31, 5),
+      // 보: 활짝 편 손
+      paper: sleeve
+        + `<rect x="9" y="44" width="15" height="34" rx="7.5" ${sk} transform="rotate(-38 16 61)"/>`
+        + `<rect x="27" y="15" width="14" height="44" rx="7" ${sk}/>`
+        + `<rect x="42" y="8" width="14" height="50" rx="7" ${sk}/>`
+        + `<rect x="57" y="12" width="14" height="46" rx="7" ${sk}/>`
+        + `<rect x="70" y="24" width="13" height="36" rx="6.5" ${sk} transform="rotate(10 76 42)"/>`
+        + `<rect x="25" y="44" width="56" height="40" rx="16" ${sk}/>` + palmShade(25, 56)
+        + shine(49, 15, 9) + shine(34, 22, 6),
+      // 가위: 검지 · 중지를 V자로
+      scissors: sleeve
+        + `<g transform="rotate(-14 32 52)"><rect x="25" y="8" width="14" height="48" rx="7" ${sk}/>${shine(30, 14, 8)}</g>`
+        + `<g transform="rotate(12 52 52)"><rect x="45" y="6" width="14" height="50" rx="7" ${sk}/>${shine(50, 12, 8)}</g>`
+        + `<rect x="21" y="42" width="60" height="42" rx="18" ${sk}/>` + palmShade(21, 60)
+        + `<rect x="51" y="34" width="15" height="24" rx="7.5" ${sk}/>`
+        + `<rect x="65.5" y="36" width="15" height="22" rx="7.5" ${sk}/>`
+        + `<path d="M19 62 C27 52 46 52 56 58 C61 61 59 69 52 69 L30 70 C22 70 17 66 19 62Z" ${sk}/>`,
+    };
+
+    // 큰 트로피
+    const TROPHY = svg(
+      `<path d="M28 20H15v8c0 10 8 16 16 16M72 20h13v8c0 10-8 16-16 16" fill="none" stroke="${C.ink}" stroke-width="10" stroke-linecap="round"/>`
+      + `<path d="M28 20H15v8c0 10 8 16 16 16M72 20h13v8c0 10-8 16-16 16" fill="none" stroke="${C.sun}" stroke-width="4.5" stroke-linecap="round"/>`
+      + `<rect x="42" y="56" width="16" height="16" fill="${C.sunLo}" ${LN}/>`
+      + `<rect x="27" y="70" width="46" height="18" rx="6" fill="${C.grape}" ${LN}/>`
+      + `<rect x="38" y="75" width="24" height="7" rx="3" fill="${C.sunHi}" stroke="${C.ink}" stroke-width="2.5"/>`
+      + `<path d="M27 12h46v24c0 14-10 24-23 24S27 50 27 36z" fill="${C.sun}"/>`
+      + `<path d="M28 38c2 11 11 19 22 19s20-8 22-19z" fill="${C.sunLo}" opacity=".55"/>`
+      + `<path d="M27 12h46v24c0 14-10 24-23 24S27 50 27 36z" fill="none" ${LN}/>`
+      + `<path d="m50 21 3.6 7.3 8 1.1-5.8 5.6 1.4 8L50 39.2l-7.2 3.8 1.4-8-5.8-5.6 8-1.1z" fill="${C.milk}" stroke="${C.ink}" stroke-width="3" stroke-linejoin="round"/>`
+      + `<path d="M34 18v14" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".7"/>`,
+      "trophy");
+
+    // 악수 (비겼다)
+    const HANDSHAKE = svg(
+      `<rect x="2" y="44" width="28" height="26" rx="7" fill="${C.sky}" ${LN} transform="rotate(-12 16 57)"/>`
+      + `<rect x="70" y="44" width="28" height="26" rx="7" fill="${C.berry}" ${LN} transform="rotate(12 84 57)"/>`
+      + `<path d="M24 50 Q36 36 54 40 L76 46 Q81 58 72 67 L46 73 Q28 73 24 62Z" ${sk}/>`
+      + `<path d="M51 47 Q59 55 53 65 M59 47 Q67 55 61 65 M67 49 Q73 57 69 64" fill="none" stroke="${C.ink}" stroke-width="3.5" stroke-linecap="round"/>`
+      + `<path d="M33 47 Q43 34 56 38 Q61 42 55 46 Q45 47 39 53Z" ${sk}/>`,
+      "ico");
+
+    // 보물 상자: 닫힌 상자 / 열린 상자 (나무 + 금테)
+    const WOOD = "#b5652a", WOOD_LO = "#7a3f17", WOOD_HI = "#d9884a";
+    const chestBody = `<rect x="10" y="50" width="100" height="46" rx="8" fill="${WOOD}" ${LN}/>`
+      + `<rect x="14" y="78" width="92" height="14" rx="5" fill="${WOOD_LO}" opacity=".7"/>`
+      + `<path d="M14 66h92" stroke="${WOOD_LO}" stroke-width="3"/>`
+      + `<rect x="24" y="50" width="12" height="46" fill="${C.sun}" ${LN}/><rect x="84" y="50" width="12" height="46" fill="${C.sun}" ${LN}/>`;
+    const CHEST_CLOSED = svg(
+      chestBody
+      + `<path d="M10 52V38Q10 14 60 14T110 38v14z" fill="${WOOD}" ${LN}/>`
+      + `<path d="M16 34Q60 20 104 34" fill="none" stroke="${WOOD_HI}" stroke-width="4" stroke-linecap="round"/>`
+      + `<path d="M24 52V24Q29 19 36 18v34zM84 52V18q7 1 12 6v28z" fill="${C.sun}" ${LN}/>`
+      + `<rect x="6" y="44" width="108" height="11" rx="4" fill="${C.sun}" ${LN}/>`
+      + `<rect x="49" y="42" width="22" height="26" rx="6" fill="${C.sunHi}" ${LN}/>`
+      + `<path d="M60 50a3.2 3.2 0 1 1 0 6.4l2 6h-4z" fill="${C.ink}"/>`,
+      "chest", "0 0 120 104");
+    const CHEST_OPEN = svg(
+      `<defs><radialGradient id="glow" cx="50%" cy="60%" r="60%"><stop offset="0" stop-color="#fffbe0"/><stop offset=".5" stop-color="${C.sunHi}" stop-opacity=".9"/><stop offset="1" stop-color="${C.sun}" stop-opacity="0"/></radialGradient></defs>`
+      + `<ellipse cx="60" cy="40" rx="62" ry="40" fill="url(#glow)"/>`
+      + `<path d="M14 46 24 8Q60-2 96 8l10 38z" fill="${WOOD_LO}" ${LN}/>`
+      + `<path d="M24 46 30 12M90 12l6 34" stroke="${C.sun}" stroke-width="9" stroke-linecap="round"/>`
+      + `<path d="M24 46 30 12M90 12l6 34" fill="none" stroke="${C.ink}" stroke-width="2" opacity=".35"/>`
+      + `<path d="M16 50h88" stroke="${C.ink}" stroke-width="6"/>`
+      + `<circle cx="44" cy="48" r="8" fill="${C.sun}" ${LN}/><circle cx="62" cy="44" r="9" fill="${C.sunHi}" ${LN}/><circle cx="78" cy="49" r="7" fill="${C.sun}" ${LN}/>`
+      + chestBody
+      + `<rect x="6" y="46" width="108" height="11" rx="4" fill="${C.sun}" ${LN}/>`
+      + `<rect x="50" y="56" width="20" height="20" rx="6" fill="${C.sunHi}" ${LN}/>`,
+      "chest", "0 0 120 104");
+
+    // 고양이 얼굴 그림 (toon.js의 캔버스 고양이를 이미지로) : 졌을 때 슬픈 고양이
+    function catImg(mood, coat, cls, size = 120) {
+      const cv = document.createElement("canvas");
+      const g = Toon.setup(cv, size, size, 2);
+      Toon.cat(g, size / 2, size * 0.56, size * 0.78, { coat, mood });
+      return `<img class="${cls}" src="${cv.toDataURL()}" alt="">`;
+    }
+
+    // ── 손 정보 (나와 컴퓨터 모두 같은 손 그림) ──
+    const HANDS = {
+      scissors: { name: "가위", beats: "paper" },
+      rock: { name: "바위", beats: "scissors" },
+      paper: { name: "보", beats: "rock" },
+    };
+    const KEYS = Object.keys(HANDS);
+    const hand = (k) => svg(HAND_ART[k], "hand");
+
+    const youSlot = document.getElementById("youSlot");
+    const cpuSlot = document.getElementById("cpuSlot");
+    const result = document.getElementById("result");
+    const picks = [...document.querySelectorAll(".pick")];
+
+    // 버튼 안 손 그림
+    document.querySelectorAll("[data-hand-icon]").forEach((el) => { el.outerHTML = hand(el.dataset.handIcon); });
+
+    // 비어 있는 칸: 큰 물음표
+    const empty = () => `<span class="q" aria-hidden="true">?</span>`;
+    youSlot.innerHTML = empty();
+    cpuSlot.innerHTML = empty();
+
+    function pop(el) {
+      el.classList.remove("pop");
+      void el.offsetWidth; // 애니메이션 다시 시작
+      el.classList.add("pop");
+    }
+
+    // ── 대결 ──
+    let busy = false;
+    const quick = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // 컴퓨터의 손: 결과를 먼저 정하고 거기에 맞는 손을 내요 (화면에는 아무 표시 없음)
+    // 한 판 기준: 내가 이길 확률 35% · 비길 확률 35% · 질 확률 30%
+    const ODDS = { win: 0.35, draw: 0.35 };
+    function cpuPick(mine) {
+      const r = Math.random();
+      if (r < ODDS.win) return HANDS[mine].beats;                                // 내가 이기는 손
+      if (r < ODDS.win + ODDS.draw) return mine;                                 // 비기는 손
+      return KEYS.find((k) => HANDS[k].beats === mine);                          // 내가 지는 손
+    }
+
+    function play(mine, forcedCpu) {
+      if (busy) return;
+      busy = true;
+      picks.forEach((b) => b.classList.toggle("is-picked", b.dataset.hand === mine));
+      Retro.sfx("select");
+
+      youSlot.innerHTML = hand(mine);
+      pop(youSlot);
+      result.className = "verdict is-hint";
+      result.textContent = "컴퓨터가 고르는 중…";
+
+      const cpu = forcedCpu || cpuPick(mine);
+
+      // 잠깐 손이 바뀌며 두근두근 (움직임 줄이기 설정이면 바로 공개)
+      let spins = quick ? 0 : 7;
+      const tick = () => {
+        if (spins-- > 0) {
+          cpuSlot.innerHTML = hand(KEYS[spins % 3]);
+          Retro.sfx("rotate");
+          setTimeout(tick, 70);
+          return;
+        }
+        reveal(mine, cpu);
+      };
+      tick();
+    }
+
+    const VERDICT = {
+      win: { text: "이겼다!", icon: () => Toon.icon("star"), sfx: "coin", buzz: "pick" },
+      lose: { text: "졌다…", icon: () => catImg("sad", "#9aa6c8", "inline-ico", 64), sfx: "error", buzz: "hit" },
+      draw: { text: "비겼다", icon: () => HANDSHAKE, sfx: "select", buzz: "tap" },
+    };
+
+    function reveal(mine, cpu) {
+      cpuSlot.innerHTML = hand(cpu);
+      cpuSlot.setAttribute("aria-label", `컴퓨터: ${HANDS[cpu].name}`);
+      pop(cpuSlot);
+
+      let outcome;
+      if (mine === cpu) outcome = "draw";
+      else if (HANDS[mine].beats === cpu) outcome = "win";
+      else outcome = "lose";
+
+      const v = VERDICT[outcome];
+      result.className = `verdict ${outcome}`;
+      result.innerHTML = v.text + v.icon();
+      Retro.sfx(v.sfx);
+      Toon.buzz(v.buzz); // 이기면 톡, 지면 강하게
+
+      // 점수: 이기면 나에게 1점, 지면 컴퓨터에게 1점, 비기면 그대로
+      if (outcome === "win") { me++; meScoreEl.textContent = me; pop(meScoreEl); burst(); }
+      if (outcome === "lose") { cpuScore++; cpuScoreEl.textContent = cpuScore; pop(cpuScoreEl); shake(); }
+
+      if (me >= GOAL || cpuScore >= GOAL) {
+        timers.push(setTimeout(() => finish(me >= GOAL), 350)); // 다시 보기 · 다시 하기를 누르면 같이 취소돼요
+        return; // 최종 화면이 뜰 때까지 버튼은 잠가 둬요
+      }
+      // 내가 3점 → HYPE!, 4점 → ALMOST!
+      if (outcome === "win" && me === 3) return hype("HYPE!", false);
+      if (outcome === "win" && me === 4) return hype("ALMOST!", true);
+      busy = false;
+    }
+
+    // ── 효과: 이기면 폭죽, 지면 판 흔들기 ──
+    const arena = document.querySelector(".arena");
+    const board = document.querySelector(".board");
+    const COLORS = [C.sun, C.berry, C.leaf, C.skyHi, C.grape, C.cat, C.milk];
+
+    function burst(target = result, count = 28, power = 1) {
+      const a = arena.getBoundingClientRect(), r = target.getBoundingClientRect();
+      const x = r.left - a.left + r.width / 2, y = r.top - a.top + r.height / 2;
+      for (let i = 0; i < count; i++) {
+        const s = document.createElement("span");
+        const ang = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+        const dist = (80 + Math.random() * 120) * power;
+        if (i % 4 === 0) { s.className = "spark star"; s.innerHTML = Toon.icon("star"); }
+        else { s.className = "spark"; s.style.background = COLORS[i % COLORS.length]; }
+        s.style.left = Math.round(x) + "px";
+        s.style.top = Math.round(y) + "px";
+        s.style.setProperty("--dx", Math.round(Math.cos(ang) * dist) + "px");
+        s.style.setProperty("--dy", Math.round(Math.sin(ang) * dist - 60) + "px");
+        arena.appendChild(s);
+        setTimeout(() => s.remove(), 1000);
+      }
+    }
+
+    function shake() {
+      board.classList.remove("shake");
+      void board.offsetWidth;
+      board.classList.add("shake");
+    }
+
+    // ── HYPE! / ALMOST! ──
+    const hypeEl = document.getElementById("hype");
+    function hype(text, big) {
+      hypeEl.textContent = text;
+      hypeEl.classList.toggle("is-almost", big);
+      hypeEl.hidden = false;
+      hypeEl.style.animation = "none";
+      void hypeEl.offsetWidth;
+      hypeEl.style.animation = "";
+      Retro.sfx(big ? "almost" : "hype");
+      Toon.buzz("good");
+      burst(hypeEl, big ? 44 : 26, big ? 1.4 : 1.1);
+      if (big) { shake(); setTimeout(() => burst(hypeEl, 36, 1.8), 380); }
+      setTimeout(() => { hypeEl.hidden = true; busy = false; }, big ? 1900 : 1500);
+    }
+
+    // ── 점수판 · 최종 승리 ──
+    const GOAL = 5;
+    let me = 0, cpuScore = 0;
+    const meScoreEl = document.getElementById("meScore");
+    const cpuScoreEl = document.getElementById("cpuScore");
+    const finalEl = document.getElementById("final");
+    const finalTitle = document.getElementById("finalTitle");
+    const finalText = document.getElementById("finalText");
+    const againBtn = document.getElementById("againBtn");
+    const finalTag = document.getElementById("finalTag");
+    const trophyWrap = document.getElementById("trophyWrap");
+    const giftEl = document.getElementById("gift");
+    const chestEl = document.getElementById("chest");
+    const giftText = document.getElementById("giftText");
+    let timers = [];
+    const later = (ms, fn) => timers.push(setTimeout(fn, quick ? 0 : ms));
+
+    function rain(n) {
+      for (let i = 0; i < n; i++) {
+        const c = document.createElement("span");
+        c.className = "confetti";
+        c.style.left = Math.round(Math.random() * 98) + "%";
+        c.style.background = COLORS[i % COLORS.length];
+        c.style.animationDelay = (Math.random() * 1.8).toFixed(2) + "s";
+        c.style.animationDuration = (1.6 + Math.random() * 0.9).toFixed(2) + "s";
+        finalEl.prepend(c);
+      }
+    }
+
+    const show = (el) => el.classList.add("on");
+    const stage = (n) => (finalEl.dataset.stage = n);
+
+    // 우승 횟수: 다른 게임의 HI처럼 6자리로 (미리보기 모드에서는 세지 않아요)
+    const winsEl = document.getElementById("wins");
+    const isPreview = new URLSearchParams(location.search).has("preview");
+    let wins = 0;
+    try { wins = Number(localStorage.getItem("rps-wins")) || 0; } catch (e) {}
+    winsEl.textContent = Retro.pad(wins);
+
+    function addWin() {
+      if (isPreview) return;
+      wins++;
+      winsEl.textContent = Retro.pad(wins);
+      try { localStorage.setItem("rps-wins", String(wins)); } catch (e) {}
+    }
+
+    function finish(won) {
+      if (won) addWin();
+      picks.forEach((b) => (b.disabled = true));
+      finalEl.querySelectorAll(".confetti").forEach((c) => c.remove());
+      finalEl.querySelectorAll(".step").forEach((el) => el.classList.remove("on"));
+      finalEl.classList.remove("flash", "is-gift");
+      giftText.classList.remove("on");
+      finalEl.classList.toggle("lose", !won);
+      finalTag.textContent = won ? "YOU WIN!" : "GAME OVER";
+      trophyWrap.innerHTML = won ? TROPHY : catImg("sad", "#9aa6c8", "trophy", 160);
+      finalTitle.textContent = won ? "최종 승리!" : "최종 패배…";
+      finalText.innerHTML = won
+        ? `나 ${me} : ${cpuScore} 컴퓨터. 축하해요!${Toon.icon("star")}`
+        : `나 ${me} : ${cpuScore} 컴퓨터. 다음엔 꼭 이겨요!`;
+      chestEl.innerHTML = CHEST_CLOSED;
+      stage(0);
+      finalEl.hidden = false;
+
+      if (!won) {
+        // 패배: 한 번에 차분하게
+        [finalTag, trophyWrap, finalTitle, finalText, againBtn].forEach(show);
+        Retro.sfx("over");
+        Toon.buzz("over");
+        againBtn.focus();
+        return;
+      }
+
+      // 승리: 점점 화려하게
+      stage(1); show(finalTag); Retro.sfx("select"); Toon.buzz("win");                   // 1. YOU WIN!
+      later(250, () => { stage(2); show(trophyWrap); Retro.sfx("milestone"); });         // 2. 빛살 + 트로피가 쿵
+      later(550, () => { stage(3); show(finalTitle); show(finalText); rain(14); Retro.sfx("hype"); }); // 3. 제목 번쩍 + 색종이 조금
+      later(900, () => {                                                                  // 4. 번쩍! 빛살 두 겹 + 색종이 왕창
+        stage(4); finalEl.classList.add("flash"); rain(36);
+        burst(trophyWrap, 36, 1.6);
+        Retro.sfx("clear");
+      });
+      // ── 최종 승리 화면 다음, 상자 장면으로 넘어가요 ──
+      later(1900, () => {                                                                 // 5. 화면 전환 (약 1.9초): 상자만 크게 등장, 들썩들썩
+        stage(5);
+        finalEl.classList.remove("flash");
+        void finalEl.offsetWidth; // 번쩍 효과 다시 시작
+        finalEl.classList.add("is-gift", "flash");
+        show(giftEl);
+        chestEl.firstChild.classList.add("wobble");
+        Retro.sfx("select");
+      });
+      later(2500, () => {                                                                 // 6. 상자가 열려요
+        chestEl.innerHTML = CHEST_OPEN;
+        chestEl.firstChild.classList.add("opened");
+        Retro.sfx("chest");
+        Toon.buzz("win");
+        burst(chestEl, 32, 1.2);
+      });
+      later(2750, () => { show(giftText); show(againBtn); againBtn.focus(); });          // 7. Your gift is...?
+    }
+
+    // 다시 하기: 0:0부터 새로
+    function restart() {
+      timers.forEach(clearTimeout);
+      timers = [];
+      me = 0; cpuScore = 0;
+      meScoreEl.textContent = 0;
+      cpuScoreEl.textContent = 0;
+      youSlot.innerHTML = empty();
+      cpuSlot.innerHTML = empty();
+      cpuSlot.removeAttribute("aria-label");
+      result.className = "verdict is-hint";
+      result.textContent = "결과가 여기에 나와요";
+      picks.forEach((b) => { b.disabled = false; b.classList.remove("is-picked"); });
+      finalEl.hidden = true;
+      busy = false;
+      Retro.sfx("start");
+      picks[0].focus();
+    }
+
+    // ── 미리보기 모드: rps.html?preview=3pt|4pt|win ──
+    // 점수를 바로 앞 단계로 맞춘 뒤, 내가 바위 · 컴퓨터가 가위를 내서 그 장면을 보여줘요
+    const PREVIEWS = {
+      "3pt": { name: "3점 득점 → HYPE!", me: 2, cpu: 1 },
+      "4pt": { name: "4점 득점 → ALMOST!", me: 3, cpu: 1 },
+      "win": { name: "최종 승리 → 보물 상자", me: 4, cpu: 2 },
+    };
+    const preview = PREVIEWS[new URLSearchParams(location.search).get("preview")];
+
+    function runPreview() {
+      timers.forEach(clearTimeout);
+      timers = [];
+      finalEl.hidden = true;
+      hypeEl.hidden = true;
+      picks.forEach((b) => { b.disabled = false; b.classList.remove("is-picked"); });
+      me = preview.me; cpuScore = preview.cpu;
+      meScoreEl.textContent = me;
+      cpuScoreEl.textContent = cpuScore;
+      youSlot.innerHTML = empty();
+      cpuSlot.innerHTML = empty();
+      busy = false;
+      setTimeout(() => play("rock", "scissors"), 300);
+    }
+
+    if (preview) {
+      document.getElementById("previewName").textContent = preview.name;
+      document.getElementById("previewBar").hidden = false;
+      document.getElementById("previewBtn").addEventListener("click", runPreview);
+      document.title = "PREVIEW · " + preview.name;
+      runPreview();
+    }
+
+    againBtn.addEventListener("click", restart);
+    picks.forEach((b) => b.addEventListener("click", () => play(b.dataset.hand)));
+  </script>
+</body>
+</html>
